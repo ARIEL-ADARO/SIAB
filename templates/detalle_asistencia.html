@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block titulo %}Detalle Asistencia{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 fw-bold">
+            <i class="bi bi-list-check"></i> Detalle de Asistencia 
+            <span class="text-muted">—</span> 
+            <span class="{% if evento.nombre_departamento == 'General / Grupal' %}text-secondary{% else %}text-primary{% endif %}">
+                {{ evento.nombre_departamento }}
+            </span>
+        </h4>
+        {% if evento %}
+        <small class="text-muted">
+            <span class="badge bg-dark">{{ evento.tipo }}</span> 
+            — {{ evento.fecha.strftime('%d/%m/%Y') if evento.fecha else '' }}
+            {% if evento.descripcion %} — <strong>{{ evento.descripcion }}</strong>{% endif %}
+        </small>
+        {% endif %}
+    </div>
+    <a href="{{ url_for('historial_asistencia') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver al Historial
+    </a>
+</div>
+
+{% if evento %}
+<!-- RESUMEN -->
+<div class="row g-3 mb-4">
+    <div class="col-4">
+        <div class="card text-center">
+            <div class="card-body py-3">
+                <div class="fw-bold text-success" style="font-size:1.8rem">
+                    {{ registros | selectattr('estado','equalto','PRESENTE') | list | length }}
+                </div>
+                <small class="text-muted">Presentes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card text-center">
+            <div class="card-body py-3">
+                <div class="fw-bold text-danger" style="font-size:1.8rem">
+                    {{ registros | selectattr('estado','equalto','AUSENTE') | list | length }}
+                </div>
+                <small class="text-muted">Ausentes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card text-center">
+            <div class="card-body py-3">
+                <div class="fw-bold text-warning" style="font-size:1.8rem">
+                    {{ registros | selectattr('estado','equalto','JUSTIFICADO') | list | length }}
+                </div>
+                <small class="text-muted">Justificados</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TABLA -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table tabla-asistencia mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Apellido y Nombre</th>
+                        <th class="d-none d-md-table-cell">Grado</th>
+                        <th>Estado</th>
+                        <th class="d-none d-md-table-cell">Observación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td class="fw-semibold">{{ r.apellido }}, {{ r.nombre }}</td>
+                    <td class="d-none d-md-table-cell text-muted small">{{ r.grado or '' }}</td>
+                    <td>
+                        {% if r.estado == 'PRESENTE' %}
+                            <span class="badge bg-success">✓ PRESENTE</span>
+                        {% elif r.estado == 'JUSTIFICADO' %}
+                            <span class="badge bg-warning text-dark">! JUSTIFICADO</span>
+                        {% else %}
+                            <span class="badge bg-danger">✗ AUSENTE</span>
+                        {% endif %}
+                    </td>
+                    <td class="d-none d-md-table-cell text-muted small">{{ r.observacion or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

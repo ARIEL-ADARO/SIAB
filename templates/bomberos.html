@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block titulo %}Bomberos{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-people"></i> Plantel de Bomberos</h4>
+        <small class="text-muted">{{ bomberos | length }} bomberos activos y en reserva</small>
+    </div>
+    <input type="text" id="buscador" class="form-control form-control-sm"
+           placeholder="🔍 Buscar..." oninput="filtrar()" style="max-width:250px">
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table tabla-asistencia mb-0" id="tablaBomberos">
+                <thead>
+                    <tr>
+                        <th>Legajo</th>
+                        <th>Apellido y Nombre</th>
+                        <th class="d-none d-md-table-cell">Grado</th>
+                        <th class="d-none d-md-table-cell">Cargo</th>
+                        <th>Situación</th>
+                        <th class="d-none d-md-table-cell">Celular</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                {% for b in bomberos %}
+                <tr>
+                    <td class="text-muted">{{ b.legajo }}</td>
+                    <td class="fw-semibold">{{ b.apellido }}, {{ b.nombre }}</td>
+                    <td class="d-none d-md-table-cell text-muted small">{{ b.grado or '—' }}</td>
+                    <td class="d-none d-md-table-cell text-muted small">{{ b.cargo or '—' }}</td>
+                    <td>
+                        {% if b.situacion == 'ACTIVO' %}
+                            <span class="badge bg-success">ACTIVO</span>
+                        {% elif b.situacion == 'RESERVA' %}
+                            <span class="badge bg-warning text-dark">RESERVA</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ b.situacion }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="d-none d-md-table-cell text-muted small">{{ b.nro_cel or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function filtrar() {
+        const busq = document.getElementById('buscador').value.toLowerCase();
+        document.querySelectorAll('#tbody tr').forEach(tr => {
+            tr.style.display = tr.textContent.toLowerCase().includes(busq) ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block titulo %}Historial de Asistencia{% endblock %}
+
+{% block contenido %}
+<form method="GET" action="{{ url_for('historial_asistencia') }}" class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" name="ver_anulados" id="verAnulados" 
+               value="1" {% if ver_anulados %}checked{% endif %} onchange="this.form.submit()">
+        <label class="form-check-label" for="verAnulados">Mostrar eventos anulados</label>
+    </div>
+</form>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-clock-history"></i> Historial de Asistencia</h4>
+        <small class="text-muted">Últimos 50 eventos registrados</small>
+    </div>
+    <a href="{{ url_for('asistencia') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Nueva Asistencia
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Ámbito / Depto</th>
+                        <th class="d-none d-md-table-cell">Descripción</th>
+                        <th class="text-success text-center">Pres.</th>
+                        <th class="text-danger text-center">Aus.</th>
+                        <th class="text-warning text-center">Just.</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in eventos %}
+                    <tr {% if e.estado == 'ANULADO' %} 
+                            style="opacity: 0.6; background-color: #f8f9fa; text-decoration: line-through; color: #6c757d;" 
+                        {% endif %}>
+                        
+                        <td class="ps-3"> <strong>{{ e.fecha.strftime('%d/%m/%Y') if e.fecha else '—' }}</strong>
+                        </td>
+
+                        <td>
+                            <span class="badge bg-secondary">{{ e.tipo }}</span>
+                        </td>
+
+                        <td>
+                            {% if e.nombre_departamento %}
+                                <span class="badge bg-info text-dark">
+                                    <i class="bi bi-diagram-3"></i> {{ e.nombre_departamento }}
+                                </span>
+                            {% else %}
+                                <span class="badge bg-dark">
+                                    <i class="bi bi-people"></i> Grupal
+                                </span>
+                            {% endif %}
+                            
+                            {# --- ESTADOS DE LA PLANILLA --- #}
+                            {% if e.estado == 'ANULADO' %}
+                                <span class="badge bg-danger ms-1">ANULADO</span>
+                            {% elif e.estado == 'FINALIZADO' %}
+                                <span class="badge bg-success ms-1">
+                                    <i class="bi bi-check-circle"></i> FINALIZADA
+                                </span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark ms-1">
+                                    <i class="bi bi-pencil-square"></i> BORRADOR
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="d-none d-md-table-cell text-muted small">
+                            {{ e.descripcion or '—' }}
+                        </td>
+                        <td class="text-success fw-bold text-center">{{ e.presentes or 0 }}</td>
+                        <td class="text-danger fw-bold text-center">{{ e.ausentes or 0 }}</td>
+                        <td class="text-warning fw-bold text-center">{{ e.justificados or 0 }}</td>
+                        <td class="text-end">
+                            <div class="btn-group">
+                                <a href="{{ url_for('detalle_asistencia', evento_id=e.id) }}"
+                                   class="btn btn-sm btn-outline-secondary" title="Ver Detalle">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+
+                                {% if e.tipo == 'CAPACITACION' and e.estado != 'ANULADO' %}
+                                <a href="{{ url_for('cargar_notas', evento_id=e.id) }}" 
+                                   class="btn btn-sm btn-info text-white" title="Cargar Calificaciones">
+                                    <i class="bi bi-pencil-square"></i>
+                                </a>
+                                {% endif %}
+
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='excel') }}">Excel (.xlsx)</a></li>
+                                        <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='pdf') }}">PDF (.pdf)</a></li>
+                                    </ul>
+                                </div>
+
+                                {% if e.estado != 'ANULADO' %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="confirmarAnulacion({{ e.id }})" title="Anular">
+                                    <i class="bi bi-slash-circle"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmarAnulacion(id) {
+    if (confirm("¿Estás seguro de que deseas ANULAR esta asistencia?\n\nEl registro se mantendrá en el historial pero dejará de contar para estadísticas.")) {
+        fetch(`/asistencia/anular/${id}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                location.reload();
+            } else {
+                alert("Error al anular: " + data.error);
+            }
+        })
+        .catch(err => alert("Error de conexión"));
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titulo %}Configuración de Puntos{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-gear"></i> Configuración de Puntos</h4>
+        <small class="text-muted">Valor por asistencia según año</small>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-md-5">
+        <div class="card">
+            <div class="card-header">Nuevo valor</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('guardar_config_puntos') }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Año</label>
+                        <input type="number" name="anio" class="form-control"
+                               value="{{ now_year }}" min="2020" max="2100" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Puntos por asistencia</label>
+                        <input type="number" name="puntos_por_asistencia" class="form-control"
+                               step="0.25" min="0" max="10" placeholder="Ej: 2.5" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descripción</label>
+                        <input type="text" name="descripcion" class="form-control"
+                               placeholder="Ej: Dos clases mensuales">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-7">
+        <div class="card">
+            <div class="card-header">Historial</div>
+            <div class="card-body p-0">
+                <table class="table tabla-asistencia mb-0">
+                    <thead>
+                        <tr>
+                            <th>Año</th>
+                            <th>Puntos por asistencia</th>
+                            <th>Descripción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td class="fw-bold">{{ r.anio }}</td>
+                        <td>
+                            <span class="badge bg-primary fs-6">{{ r.puntos_por_asistencia }}</span>
+                        </td>
+                        <td class="text-muted small">{{ r.descripcion or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

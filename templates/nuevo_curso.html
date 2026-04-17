@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block titulo %}Registrar Curso{% endblock %}
+
+{% block estilos %}
+<style>
+    .bombero-item { cursor: pointer; padding: 6px 10px; border-radius: 6px; }
+    .bombero-item:hover { background: #fff0f0; }
+    .bombero-item.seleccionado { background: #a50000; color: white; }
+    .bombero-item.seleccionado small { color: #ffcccc !important; }
+    #listaBomberos { max-height: 400px; overflow-y: auto; }
+    .contador-sel { font-weight: 700; color: #a50000; }
+</style>
+{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-mortarboard"></i> Registrar Curso</h4>
+        <small class="text-muted">Carga grupal de participantes</small>
+    </div>
+</div>
+
+<form method="POST">
+<div class="row g-3">
+
+    <!-- DATOS DEL CURSO -->
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-header"><i class="bi bi-info-circle"></i> Datos del Curso</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Nombre del curso <span class="text-danger">*</span></label>
+                    <input type="text" name="nombre" class="form-control" required
+                           placeholder="Ej: Manejo defensivo, RCP básico...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Institución organizadora</label>
+                    <input type="text" name="institucion" class="form-control"
+                           placeholder="Ej: BCBA, Defensa Civil, Cruz Roja...">
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">Fecha inicio</label>
+                        <input type="date" name="fecha_inicio" class="form-control">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">Fecha fin</label>
+                        <input type="date" name="fecha_fin" class="form-control">
+                    </div>
+                </div>
+                <div class="mb-3 mt-2">
+                    <label class="form-label fw-semibold">Horas</label>
+                    <input type="number" name="horas" class="form-control" step="0.5" min="0"
+                           placeholder="Ej: 8">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Descripción / Observaciones</label>
+                    <textarea name="descripcion" class="form-control" rows="3"
+                              placeholder="Temario, modalidad, lugar..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PARTICIPANTES -->
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-people"></i> Participantes</span>
+                <span class="badge bg-light text-dark">
+                    Seleccionados: <span class="contador-sel" id="contSel">0</span>
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex gap-2 mb-2 flex-wrap">
+                    <input type="text" id="buscarBombero" class="form-control form-control-sm"
+                           placeholder="🔍 Buscar..." oninput="filtrarBomberosCurso()"
+                           style="max-width:200px">
+                    <button type="button" class="btn btn-sm btn-outline-success"
+                            onclick="seleccionarTodos()">Todos</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="deseleccionarTodos()">Ninguno</button>
+                </div>
+                <div id="listaBomberos">
+                    {% for b in bomberos %}
+                    <div class="bombero-item" data-legajo="{{ b.legajo }}"
+                         data-nombre="{{ b.apellido }} {{ b.nombre }}"
+                         onclick="toggleBombero(this)">
+                        <div class="fw-semibold">{{ b.apellido }}, {{ b.nombre }}</div>
+                        <small class="text-muted">{{ b.grado or '' }}</small>
+                        <input type="checkbox" name="participantes" value="{{ b.legajo }}"
+                               style="display:none" class="chk-bombero">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTONES -->
+    <div class="col-12 d-flex gap-2 justify-content-end">
+        <a href="{{ url_for('cursos') }}" class="btn btn-outline-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar Curso
+        </button>
+    </div>
+
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleBombero(el) {
+        el.classList.toggle('seleccionado');
+        el.querySelector('.chk-bombero').checked = el.classList.contains('seleccionado');
+        actualizarContador();
+    }
+
+    function seleccionarTodos() {
+        document.querySelectorAll('.bombero-item').forEach(el => {
+            if (el.style.display !== 'none') {
+                el.classList.add('seleccionado');
+                el.querySelector('.chk-bombero').checked = true;
+            }
+        });
+        actualizarContador();
+    }
+
+    function deseleccionarTodos() {
+        document.querySelectorAll('.bombero-item').forEach(el => {
+            el.classList.remove('seleccionado');
+            el.querySelector('.chk-bombero').checked = false;
+        });
+        actualizarContador();
+    }
+
+    function actualizarContador() {
+        const sel = document.querySelectorAll('.bombero-item.seleccionado').length;
+        document.getElementById('contSel').textContent = sel;
+    }
+
+    function filtrarBomberosCurso() {
+        const busq = document.getElementById('buscarBombero').value.toLowerCase();
+        document.querySelectorAll('.bombero-item').forEach(el => {
+            const nombre = el.dataset.nombre.toLowerCase();
+            el.style.display = nombre.includes(busq) ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

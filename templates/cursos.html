@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titulo %}Cursos{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-journal-text"></i> Cursos Registrados</h4>
+        <small class="text-muted">Historial de cursos y capacitaciones</small>
+    </div>
+    <a href="{{ url_for('nuevo_curso') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Registrar Curso
+    </a>
+</div>
+
+{% if cursos %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table tabla-asistencia mb-0">
+                <thead>
+                    <tr>
+                        <th>Curso</th>
+                        <th class="d-none d-md-table-cell">Institución</th>
+                        <th>Fecha</th>
+                        <th class="d-none d-md-table-cell">Horas</th>
+                        <th>Participantes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for c in cursos %}
+                <tr>
+                    <td class="fw-semibold">{{ c.nombre }}</td>
+                    <td class="d-none d-md-table-cell text-muted">{{ c.institucion or '—' }}</td>
+                    <td class="small">
+                        {{ c.fecha_inicio.strftime('%d/%m/%Y') if c.fecha_inicio else '—' }}
+                    </td>
+                    <td class="d-none d-md-table-cell">{{ c.horas or '—' }}</td>
+                    <td>
+                        <span class="badge bg-primary">{{ c.participantes }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-mortarboard" style="font-size:3rem"></i>
+        <p class="mt-3">No hay cursos registrados todavía.</p>
+        <a href="{{ url_for('nuevo_curso') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Registrar primer curso
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

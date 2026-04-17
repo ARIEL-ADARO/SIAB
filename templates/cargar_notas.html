@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+            <div>
+                <h3 class="fw-bold mb-1 text-primary">
+                    <i class="bi bi-clipboard-check"></i> Planilla de Calificaciones
+                </h3>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="badge bg-light text-dark border">
+                        <i class="bi bi-calendar3"></i> {{ evento.fecha.strftime('%d/%m/%Y') }}
+                    </span>
+                    
+                    {% if evento.nombre_departamento %}
+                        <span class="badge bg-info text-dark shadow-sm">
+                            <i class="bi bi-diagram-3"></i> DEPTO: {{ evento.nombre_departamento }}
+                        </span>
+                    {% else %}
+                        <span class="badge bg-dark shadow-sm">
+                            <i class="bi bi-people"></i> CAPACITACIÓN GRUPAL
+                        </span>
+                    {% endif %}
+                    
+                    <span class="text-muted small border-start ps-2">
+                        <i class="bi bi-person-check"></i> {{ presentes|length }} Presentes
+                    </span>
+                </div>
+            </div>
+            
+            <div class="btn-group shadow-sm">
+                <a href="{{ url_for('historial_asistencia') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver
+                </a>
+                
+                <button form="formNotas" type="submit" name="accion" value="guardar" class="btn btn-outline-success px-3">
+                    <i class="bi bi-save"></i> Guardar Borrador
+                </button>
+
+                <button form="formNotas" type="submit" name="accion" value="finalizar" class="btn btn-success px-4" 
+                        onclick="return validarCierre(event)">
+                    <i class="bi bi-check-all"></i> Finalizar Todo
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <form id="formNotas" action="{{ url_for('guardar_calificaciones_postas', evento_id=evento.id) }}" method="POST">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="ps-4" style="min-width: 280px;">Bombero</th>
+                            {% for tema in temas %}
+                            <th class="text-center" style="min-width: 140px;">
+                                <div class="small text-uppercase opacity-75">Posta / Tema</div>
+                                <div class="text-truncate" style="max-width: 180px;" title="{{ tema.nombre }}">
+                                    {{ tema.nombre }}
+                                </div>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# Definimos los grados que NO se califican usualmente #}
+                        {% set grados_superiores = ['JEFE', 'SUBJEFE', 'OFICIAL', 'SUB-OFICIAL'] %}
+
+                        {% for p in presentes %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ p.apellido }}, {{ p.nombre }}</div>
+                                <div class="text-muted small">{{ p.grado }} - Legajo: {{ p.legajo }}</div>
+                            </td>
+                            
+                            {% for tema in temas %}
+                            <td class="bg-light-subtle">
+                                <div class="px-3">
+                                    {# LÓGICA DE FILTRADO #}
+                                    {% if p.grado in grados_superiores and not evento.califica_superiores %}
+                                        <div class="text-center text-muted small py-2">
+                                            <i class="bi bi-slash-circle"></i> N/C
+                                        </div>
+                                        <input type="hidden" name="nota_{{ p.legajo }}_{{ tema.id }}" value="">
+                                    {% else %}
+                                        <input type="number" 
+                                            name="nota_{{ p.legajo }}_{{ tema.id }}" 
+                                            class="form-control form-control-sm text-center fw-bold shadow-sm nota-input" 
+                                            min="0" max="5" step="0.5" 
+                                            {% if evento.estado == 'FINALIZADO' %} readonly {% endif %}
+                                            value="{{ mapa_notas.get((p.legajo, tema.id), '') }}">
+                                    {% endif %}
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    .table-hover tbody tr:hover td { background-color: #f1f5f9 !important; }
+    .is-invalid { border-color: #dc3545 !important; background-color: #fff8f8; }
+    input[readonly] { background-color: #e9ecef !important; cursor: not-allowed; }
+</style>
+
+<script>
+function validarCierre(e) {
+    const inputs = document.querySelectorAll('.nota-input');
+    let vacios = 0;
+    let fueraRango = 0;
+
+    inputs.forEach(input => {
+        const val = input.value.trim();
+        if (val === "") {
+            vacios++;
+        } else {
+            const num = parseFloat(val);
+            if (num < 0 || num > 5) {
+                fueraRango++;
+                input.classList.add('is-invalid');
+            } else {
+                input.classList.remove('is-invalid');
+            }
+        }
+    });
+
+    if (fueraRango > 0) {
+        alert("¡Error! Hay notas fuera del rango (0 a 5). Corrígelas antes de finalizar.");
+        return false;
+    }
+
+    let mensaje = "¿Confirmar CIERRE TOTAL? Una vez finalizado, las notas no se podrán editar más.";
+    if (vacios > 0) {
+        mensaje = `¡ATENCIÓN! Hay ${vacios} notas sin cargar.\n\nSi finalizas ahora, no podrás completarlas después.\n\n¿Deseas cerrar la planilla de todos modos?`;
+    }
+
+    return confirm(mensaje);
+}
+
+// Validación básica para el botón "Guardar Borrador"
+document.getElementById('formNotas').addEventListener('submit', function(e) {
+    const botonPresionado = document.activeElement.value;
+    
+    // Si solo es guardar borrador, solo chequeamos rango, no celdas vacías
+    if (botonPresionado === 'guardar') {
+        const inputs = document.querySelectorAll('.nota-input');
+        let error = false;
+        inputs.forEach(input => {
+            const val = input.value.trim();
+            if (val !== "") {
+                const num = parseFloat(val);
+                if (num < 0 || num > 5) { error = true; input.classList.add('is-invalid'); }
+            }
+        });
+        if (error) {
+            alert("Hay notas fuera de rango.");
+            e.preventDefault();
+        }
+    }
+});
+</script>
+{% endblock %}

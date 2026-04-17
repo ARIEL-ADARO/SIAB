@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block titulo %}{{ depto.nombre }}{% endblock %}
+
+{% block estilos %}
+<style>
+    /* Bomberos disponibles (no están en este depto) */
+    #selectBombero option.disponible {
+        background: #e8f5e9;
+        color: #1b5e20;
+    }
+    /* Bomberos ya en otro depto */
+    #selectBombero option.en_otro {
+        background: #fff8e1;
+        color: #5d4037;
+    }
+    /* Bomberos ya en ESTE depto */
+    #selectBombero option.ya_en_este {
+        background: #ffebee;
+        color: #b71c1c;
+        font-style: italic;
+    }
+    #selectBombero {
+        font-size: 0.9rem;
+    }
+    .leyenda-color {
+        width: 14px; height: 14px;
+        border-radius: 3px;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-diagram-3"></i> {{ depto.nombre }}</h4>
+        <small class="text-muted">{{ depto.descripcion or '' }} — {{ miembros|length }} miembros activos</small>
+    </div>
+    <a href="{{ url_for('departamentos') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="row g-4">
+
+    <!-- MIEMBROS ACTUALES -->
+    <div class="col-12 col-md-7">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-people"></i> Miembros actuales</div>
+            <div class="card-body p-0">
+                {% if miembros %}
+                <div class="table-responsive">
+                    <table class="table tabla-asistencia align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Apellido y Nombre</th>
+                                <th class="d-none d-md-table-cell">Grado</th>
+                                <th class="d-none d-md-table-cell">Desde</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for m in miembros %}
+                        <tr>
+                            <td class="fw-semibold">{{ m.apellido }}, {{ m.nombre }}</td>
+                            <td class="d-none d-md-table-cell text-muted small">{{ m.grado or '—' }}</td>
+                            <td class="d-none d-md-table-cell text-muted small">
+                                {{ m.fecha_ingreso.strftime('%d/%m/%Y') if m.fecha_ingreso else '—' }}
+                            </td>
+                            <td>
+                                <form method="POST" action="{{ url_for('quitar_miembro', bd_id=m.bd_id) }}"
+                                      onsubmit="return confirm('¿Quitar a {{ m.apellido }} del departamento?')">
+                                    <input type="hidden" name="depto_id" value="{{ depto.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-x"></i> Quitar
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-people" style="font-size:2rem"></i>
+                    <p class="mt-2">Sin miembros asignados todavía.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- AGREGAR MIEMBROS -->
+    <div class="col-12 col-md-5">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-person-plus"></i> Agregar bomberos</div>
+            <div class="card-body">
+
+                <!-- LEYENDA -->
+                <div class="d-flex flex-wrap gap-2 mb-3 small">
+                    <span><span class="leyenda-color" style="background:#e8f5e9; border:1px solid #aaa"></span> Disponible</span>
+                    <span><span class="leyenda-color" style="background:#fff8e1; border:1px solid #aaa"></span> En otro depto.</span>
+                    <span><span class="leyenda-color" style="background:#ffebee; border:1px solid #aaa"></span> Ya en este depto.</span>
+                </div>
+
+                <form method="POST" action="{{ url_for('agregar_miembro', depto_id=depto.id) }}">
+                    <div class="mb-2">
+                        <input type="text" id="buscarAgregar" class="form-control form-control-sm"
+                               placeholder="🔍 Escribí para filtrar..." oninput="filtrarAgregar()">
+                    </div>
+
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="seleccionarTodos()">
+                            <i class="bi bi-people"></i> Todos
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="seleccionarDisponibles()">
+                            <i class="bi bi-check-all"></i> Selec. disponibles
+                        </button>
+                        
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deseleccionarTodos()">
+                            <i class="bi bi-x"></i> Ninguno
+                        </button>
+                    </div>
+
+                    <select name="legajo" id="selectBombero" class="form-select mb-3"
+                            size="12" multiple>
+                        {% for b in todos %}
+                            {% set ya_en_este = miembros | selectattr('legajo','equalto', b.legajo) | list | length > 0 %}
+                            <option value="{{ b.legajo }}"
+                                class="{% if ya_en_este %}ya_en_este{% elif b.deptos_nombres %}en_otro{% else %}disponible{% endif %}"
+                                {% if ya_en_este %}disabled{% endif %}>
+                                {{ b.apellido }}, {{ b.nombre }}
+                                {% if b.grado %} ({{ b.grado }}){% endif %}
+                                {% if b.deptos_nombres %} — [{{ b.deptos_nombres }}]{% endif %}
+                                {% if ya_en_este %} ✓ ya en este depto.{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <small class="text-muted d-block mb-3">
+                        <i class="bi bi-info-circle"></i>
+                        Mantené <strong>Ctrl</strong> para seleccionar varios.
+                    </small>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Fecha de ingreso</label>
+                        <input type="date" name="fecha_ingreso" id="fechaIngreso" class="form-control">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-lg"></i> Agregar al departamento
+                    </button>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Fecha de hoy por defecto
+    document.getElementById('fechaIngreso').value = new Date().toISOString().split('T')[0];
+
+    function filtrarAgregar() {
+        const busq = document.getElementById('buscarAgregar').value.toLowerCase();
+        document.querySelectorAll('#selectBombero option').forEach(o => {
+            o.style.display = o.text.toLowerCase().includes(busq) ? '' : 'none';
+        });
+    }
+
+    function seleccionarDisponibles() {
+        document.querySelectorAll('#selectBombero option').forEach(o => {
+            if (!o.disabled && o.style.display !== 'none') {
+                o.selected = true;
+            }
+        });
+    }
+
+    function deseleccionarTodos() {
+        document.querySelectorAll('#selectBombero option').forEach(o => {
+            o.selected = false;
+        });
+    }
+    
+    function seleccionarTodos() {
+        document.querySelectorAll('#selectBombero option').forEach(o => {
+            // Marcamos todos los que NO estén deshabilitados (los que ya están en el depto siguen bloqueados)
+            // y que estén visibles (por si usaste el buscador)
+            if (!o.disabled && o.style.display !== 'none') {
+                o.selected = true;
+            }
+        });
+    }    
+</script>
+{% endblock %}

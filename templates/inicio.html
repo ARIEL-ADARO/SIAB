@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block titulo %}Inicio{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold">Panel Principal</h4>
+        <small class="text-muted">Bomberos Voluntarios de Almafuerte</small>
+    </div>
+</div>
+
+<!-- BORRADORES ABIERTOS -->
+{% if borradores %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-4">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+        <strong>Asistencias en borrador</strong> — hay {{ borradores|length }} evento(s) sin confirmar:
+        <div class="mt-2 d-flex flex-wrap gap-2">
+            {% for b in borradores %}
+            <a href="{{ url_for('editar_borrador', evento_id=b.id) }}"
+               class="btn btn-sm btn-warning fw-semibold">
+                <i class="bi bi-pencil"></i>
+                {{ b.tipo }} — {{ b.fecha.strftime('%d/%m/%Y') if b.fecha else '' }}
+                {% if b.descripcion %} ({{ b.descripcion[:30] }}){% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- STATS -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="stat-numero">{{ stats.bomberos_activos }}</div>
+                <div class="text-muted small">Bomberos activos</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="stat-numero">{{ stats.eventos_mes }}</div>
+                <div class="text-muted small">Eventos este mes</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="stat-numero">{{ stats.asistencias_mes }}</div>
+                <div class="text-muted small">Asistencias este mes</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="stat-numero">{{ stats.cursos_anio }}</div>
+                <div class="text-muted small">Cursos este año</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ACCESOS RÁPIDOS -->
+<h6 class="text-muted fw-semibold mb-3">ACCESOS RÁPIDOS</h6>
+<div class="row g-3">
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('asistencia') }}" class="card text-decoration-none h-100">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-check2-square text-danger" style="font-size:2.2rem"></i>
+                <div class="fw-semibold mt-2">Tomar Asistencia</div>
+                <small class="text-muted">Guardia / Evento</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('historial_asistencia') }}" class="card text-decoration-none h-100">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-clock-history text-danger" style="font-size:2.2rem"></i>
+                <div class="fw-semibold mt-2">Historial</div>
+                <small class="text-muted">Ver registros</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('nuevo_curso') }}" class="card text-decoration-none h-100">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-mortarboard text-danger" style="font-size:2.2rem"></i>
+                <div class="fw-semibold mt-2">Registrar Curso</div>
+                <small class="text-muted">Carga grupal</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('departamentos') }}" class="card text-decoration-none h-100">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-diagram-3 text-danger" style="font-size:2.2rem"></i>
+                <div class="fw-semibold mt-2">Departamentos</div>
+                <small class="text-muted">Grupos y áreas</small>
+            </div>
+        </a>
+    </div>
+</div>
+{% endblock %}

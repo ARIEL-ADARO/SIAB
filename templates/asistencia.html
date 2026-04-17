@@ -1,0 +1,697 @@
+{% extends "base.html" %}
+{% block titulo %}Tomar Asistencia{% endblock %}
+
+{% block estilos %}
+<style>
+    .bombero-row { transition: background 0.15s; }
+    .bombero-row:hover { background: #fff8f8; }
+    .btn-presente  { background:#198754; color:white; border:none; }
+    .btn-ausente   { background:#dc3545; color:white; border:none; }
+    .btn-justif    { background:#fd7e14; color:white; border:none; }
+    .btn-estado-inactivo { opacity: 0.3; }
+    .estado-badge {
+        display: inline-block;
+        width: 110px;
+        text-align: center;
+        font-size: 0.78rem;
+        padding: 3px 8px;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    .resumen-bar { background:#1a1a1a; color:white; border-radius:10px; padding:1rem 1.5rem; }
+    #buscador { max-width: 300px; }
+    .filtro-btn.active { background: #a50000 !important; color: white !important; }
+    /* Busca y reemplaza esta parte en tus <style> */
+    .tabla-asistencia thead th {
+        position: sticky;
+        top: 0;
+        background-color: #ffffff !important; /* Fondo sólido para que no se trasluzcan los nombres */
+        z-index: 1000; /* Prioridad máxima */
+        border-bottom: 2px solid #dee2e6;
+        box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* Sombra para separar del contenido */
+    }
+
+    /* IMPORTANTE: El contenedor debe tener una altura definida para que el sticky funcione */
+    .table-responsive {
+        max-height: 65vh; /* Ajusta la altura a tu gusto */
+        overflow-y: auto;
+    }
+    /* Bloqueo total de interacción cuando el evento está cerrado */
+    .evento-confirmado {
+        position: relative;
+        pointer-events: none !important; /* Deshabilita clics, hover y scroll interno */
+        user-select: none;
+        opacity: 0.7;
+        filter: grayscale(0.5);
+    }
+
+    /* El cursor dirá "prohibido" al pasar por la tabla */
+    .evento-confirmado table {
+        cursor: not-allowed !important;
+    }
+    /* Exceptuamos el botón de volver para que no queden atrapados */
+    .btn-volver {
+        pointer-events: auto !important;
+        opacity: 1 !important;
+    }    
+</style>
+{% endblock %}
+
+{% block contenido %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 fw-bold">
+            <i class="bi bi-check2-square"></i> Tomar Asistencia
+            {% if evento %}
+                <span class="badge {% if evento.estado == 'FINALIZADO' %}bg-secondary{% else %}bg-warning text-dark{% endif %} ms-2" style="font-size: 0.5em;">
+                    {% if evento.estado == 'FINALIZADO' %}
+                        FINALIZADA (SOLO LECTURA)
+                    {% else %}
+                        MODO EDICIÓN (BORRADOR #{{ evento.id }})
+                    {% endif %}
+                </span>
+            {% endif %}
+        </h4>
+        <small class="text-muted">Seleccioná el estado de cada bombero</small>
+    </div>
+</div>
+
+<!-- DATOS DEL EVENTO -->
+<div class="card mb-3">
+    <div class="card-header bg-dark text-white"><i class="bi bi-calendar-event"></i> Datos del Evento</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 col-6">
+                <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
+                <input type="date" id="fecha" class="form-control" value="{{ evento.fecha if evento else hoy }}">
+            </div>
+            <div class="col-md-3 col-6">
+                <label class="form-label fw-semibold">Tipo <span class="text-danger">*</span></label>
+                <select id="tipo" class="form-select border-primary">
+                    <option value="">-- Seleccioná --</option>
+                    <option value="GUARDIA">Guardia</option>
+                    <option value="CAPACITACION">Capacitación</option>
+                    <option value="SALIDA">Salida / Emergencia</option>
+                    <option value="REUNION">Reunión</option>
+                    <option value="EVENTO">Evento / Servicio</option>
+                    <option value="OTRO">Otro</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label fw-semibold">Hora inicio</label>
+                <input type="time" id="hora_inicio" class="form-control" value="{{ evento.hora_inicio if evento else '' }}">
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label fw-semibold">Hora fin</label>
+                <input type="time" id="hora_fin" class="form-control" value="{{ evento.hora_fin if evento else '' }}">
+            </div>
+            <div class="col-md-2 col-12">
+                <label class="form-label fw-semibold">Concepto</label>
+                <select id="concepto_id" class="form-select">
+                    <option value="">-- Ninguno --</option>
+                    {% for c in conceptos %}
+                    <option value="{{ c.id }}" {% if evento and evento.concepto_id == c.id %}selected{% endif %}>{{ c.concepto }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-semibold">Descripción</label>
+                <input type="text" id="descripcion" class="form-control" placeholder="Ej: Instrucción de RCP, Incendio..." value="{{ evento.descripcion if evento else '' }}">
+            </div>
+
+            <div class="col-12 mt-3">
+                <div class="p-3 bg-white border rounded shadow-sm">
+                    <label class="fw-bold mb-2 text-danger small">
+                        <i class="bi bi-person-badge"></i> DEFINIR QUIÉNES CALIFICAN (No recibirán nota)
+                    </label>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch border p-2 rounded">
+                                <input class="form-check-input ms-1" type="checkbox" id="activarOficiales" onchange="actualizarComboCalificadores()">
+                                <label class="form-check-label fw-semibold ms-2" for="activarOficiales">Oficiales / Jefes</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch border p-2 rounded">
+                                <input class="form-check-input ms-1" type="checkbox" id="activarSuboficiales" onchange="actualizarComboCalificadores()">
+                                <label class="form-check-label fw-semibold ms-2" for="activarSuboficiales">Suboficiales</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch border p-2 rounded">
+                                <input class="form-check-input ms-1" type="checkbox" id="activarEncargados" onchange="actualizarComboCalificadores()">
+                                <label class="form-check-label fw-semibold ms-2" for="activarEncargados">Encargados</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Los rangos marcados serán los que aparezcan en la lista para elegir "Calificador".</div>
+                </div>
+            </div>
+
+            <div id="seccion-postas" class="col-12 d-none mt-2">
+                <div class="p-3 border rounded bg-light">
+                    <h6 class="fw-bold text-danger"><i class="bi bi-diagram-3"></i> Temas / Postas a Calificar</h6>
+                    
+                    <div id="contenedor-inputs-postas" class="mb-3"></div>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarPosta()">
+                        <i class="bi bi-plus-lg"></i> Agregar otra posta
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BARRA RESUMEN + CONTROLES -->
+<div class="resumen-bar mb-3 d-flex flex-wrap align-items-center gap-3">
+    <div><i class="bi bi-people"></i> Total: <strong id="totalBomberos">0</strong></div>
+    <div class="text-success"><i class="bi bi-check-circle"></i> Presentes: <strong id="cntPresente">0</strong></div>
+    <div class="text-danger"><i class="bi bi-x-circle"></i> Ausentes: <strong id="cntAusente">0</strong></div>
+    <div class="text-warning"><i class="bi bi-exclamation-circle"></i> Justificados: <strong id="cntJustif">0</strong></div>
+    <div class="ms-auto d-flex gap-2 flex-wrap">
+        <button class="btn btn-sm btn-success" onclick="marcarTodos('PRESENTE')">
+            <i class="bi bi-check-all"></i> Todos presentes
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="marcarTodos('AUSENTE')">
+            <i class="bi bi-x-lg"></i> Todos ausentes
+        </button>
+    </div>
+</div>
+
+<!-- FILTROS Y BUSCADOR -->
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <div class="me-2" style="min-width: 200px;">
+        <select class="form-select form-select-sm border-primary" id="filtroDepartamento" onchange="cargarBomberos()">
+            <option value="todos">-- Todo el Cuerpo --</option>
+            {% for d in departamentos %}
+                <option value="{{ d.id }}">{{ d.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <input type="text" id="buscador" class="form-control form-control-sm"
+           placeholder="🔍 Buscar por nombre..." oninput="filtrarBomberos()">
+    <button class="btn btn-sm btn-outline-secondary filtro-btn active" onclick="filtrar('TODOS', this)">Todos</button>
+    <button class="btn btn-sm btn-outline-success filtro-btn" onclick="filtrar('PRESENTE', this)">Presentes</button>
+    <button class="btn btn-sm btn-outline-danger filtro-btn" onclick="filtrar('AUSENTE', this)">Ausentes</button>
+    <button class="btn btn-sm btn-outline-warning filtro-btn" onclick="filtrar('JUSTIFICADO', this)">Justificados</button>
+    <button class="btn btn-sm btn-outline-secondary filtro-btn" onclick="filtrar('SIN_MARCAR', this)">Sin marcar</button>
+</div>
+
+<!-- TABLA BOMBEROS -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table tabla-asistencia mb-0" id="tablaBomberos">
+                <thead>
+                    <tr>
+                        <th style="width:50px">#</th>
+                        <th>Apellido y Nombre</th>
+                        <th class="d-none d-md-table-cell">Grado</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                        <th class="d-none d-md-table-cell">Observación</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm text-danger"></div>
+                        Cargando bomberos...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL GUARDAR -->
+<div class="modal fade" id="modalGuardar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#a50000; color:white">
+                <h5 class="modal-title"><i class="bi bi-save"></i> Confirmar Guardado</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="resumenModal">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary" onclick="enviarAsistencia(true)">
+                    <i class="bi bi-check-lg"></i> Confirmar y Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</div> <div class="d-flex justify-content-between mt-4 p-3 bg-white border rounded shadow-sm">
+            <div>
+                <a href="{{ url_for('inicio') }}" class="btn btn-outline-secondary btn-volver">
+                    <i class="bi bi-x-circle"></i> Cancelar
+                </a>
+            </div>
+
+            {# ESTA ES LA LLAVE DE SEGURIDAD REAL #}
+            {% if not evento or evento.estado == 'BORRADOR' or evento.estado == '' %}
+            <div class="btn-group">
+                <button id="btn-guardar-borrador" type="button" onclick="enviarAsistencia(false)" class="btn btn-warning px-4">
+                    <i class="bi bi-save"></i> Guardar Borrador
+                </button>
+                
+                <button id="btn-finalizar" type="button" onclick="enviarAsistencia(true)" class="btn btn-success px-4">
+                    <i class="bi bi-check-circle"></i> Finalizar y Confirmar
+                </button>
+            </div>
+            {% else %}
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> Este registro está finalizado y no permite modificaciones.
+            </div>
+            {% endif %}
+        </div>
+
+</div> {% endblock %} {% block scripts %}
+<script>
+    // --- 1. VARIABLES GLOBALES ---
+    const eventoIdExistente = {{ evento.id if evento else 'null' }};
+    const datosBorrador = {{ asistencias_previas | tojson | safe if asistencias_previas else '{}' }};
+    const postasPrevias = {{ postas_previas | tojson | safe if postas_previas else '[]' }};
+    
+    let bomberos = [];
+    let estados = {}; 
+    let filtroActivo = 'TODOS';
+    let contadorPostas = postasPrevias.length > 0 ? postasPrevias.length : 1;
+
+    // --- 2. INICIALIZACIÓN AL CARGAR LA PÁGINA ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const tipoSelect = document.getElementById('tipo');
+
+        {% if not evento %}
+            // Escenario: Nuevo Evento
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('fecha').value = hoy;
+            cargarBomberos(); // Carga normal
+        {% else %}
+            // Escenario: Cargar Borrador o Evento Finalizado
+            document.getElementById('tipo').value = "{{ evento.tipo }}";
+            document.getElementById('descripcion').value = "{{ evento.descripcion }}";
+            document.getElementById('hora_inicio').value = "{{ evento.hora_inicio }}";
+            document.getElementById('hora_fin').value = "{{ evento.hora_fin }}";
+            document.getElementById('concepto_id').value = "{{ evento.concepto_id or '' }}";
+            document.getElementById('filtroDepartamento').value = "{{ evento.departamento_id or 'todos' }}";
+            
+            // Configuración de switches de calificación
+            document.getElementById('activarOficiales').checked = {{ 1 if evento.califica_oficiales else 0 }} === 1;
+            document.getElementById('activarSuboficiales').checked = {{ 1 if evento.califica_suboficiales else 0 }} === 1;
+            document.getElementById('activarEncargados').checked = {{ 1 if evento.califica_encargados else 0 }} === 1;
+
+            // CARGA Y BLOQUEO: Solo bloquea si el estado es FINALIZADO o ANULADO
+            cargarBomberos().then(() => {
+                const estadoActual = "{{ evento.estado }}";
+                if (estadoActual === "FINALIZADO" || estadoActual === "ANULADO") {
+                    aplicarBloqueoSeguridad();
+                }
+            });
+        {% endif %}
+
+        // Lógica de visualización de Postas (solo si es Capacitación)
+        tipoSelect.addEventListener('change', function() {
+            const seccion = document.getElementById('seccion-postas');
+            if (this.value === 'CAPACITACION') {
+                seccion.classList.remove('d-none');
+                if (document.querySelectorAll('#contenedor-inputs-postas .row').length === 0) {
+                    agregarPosta();
+                }
+            } else {
+                seccion.classList.add('d-none');
+            }
+        });
+
+        // Verificación inicial de la sección postas (por si carga un borrador de capacitación)
+        if (tipoSelect.value === 'CAPACITACION') {
+            document.getElementById('seccion-postas').classList.remove('d-none');
+        }
+
+    }); // Cierre seguro del DOMContentLoaded
+
+    async function cargarBomberos() {
+        const selectorDepto = document.getElementById('filtroDepartamento');
+        const deptoId = selectorDepto.value;
+        const tbody = document.getElementById('tbody');
+        
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-danger"></div></td></tr>`;
+
+        try {
+            if (eventoIdExistente && Object.keys(datosBorrador).length > 0) {
+                selectorDepto.disabled = true; 
+                
+                bomberos = Object.keys(datosBorrador).map(legajo => ({
+                    legajo: parseInt(legajo),
+                    apellido: datosBorrador[legajo].apellido, 
+                    nombre: datosBorrador[legajo].nombre,
+                    grado: datosBorrador[legajo].grado || '',
+                    es_encargado: datosBorrador[legajo].es_encargado || false
+                }));
+
+                estados = {};
+                bomberos.forEach(b => {
+                    const d = datosBorrador[b.legajo.toString()];
+                    estados[b.legajo] = { 
+                        estado: d.estado || 'AUSENTE', 
+                        observacion: d.observacion || '' 
+                    };
+                });
+            } else {
+                const res = await fetch(`/asistencia/bomberos?departamento_id=${deptoId}`);
+                bomberos = await res.json();
+                estados = {};
+                bomberos.forEach(b => {
+                    estados[b.legajo] = { estado: 'AUSENTE', observacion: '' };
+                });
+            }
+
+            renderTabla();
+            actualizarContadores();
+            actualizarComboCalificadores();
+
+            if (eventoIdExistente && postasPrevias.length > 0) {
+                const contenedor = document.getElementById('contenedor-inputs-postas');
+                if (contenedor) {
+                    contenedor.innerHTML = ''; 
+                    postasPrevias.forEach((p) => {
+                        const nombreDelTema = p.nombre || p.tema || '';
+                        const calificador = p.calificador_legajo || '';
+                        agregarPosta(nombreDelTema, calificador);
+                    });
+                    document.getElementById('seccion-postas').classList.remove('d-none');
+                }
+            } else if (document.getElementById('tipo').value === 'CAPACITACION') {
+                if (document.querySelectorAll('#contenedor-inputs-postas .row').length === 0) {
+                    agregarPosta();
+                }
+            }
+
+            // --- BLOQUEO PREVENTIVO ---
+            if ("{{ evento.estado if evento else '' }}" === "FINALIZADO") {
+                aplicarBloqueoSeguridad();
+            }
+
+            return true; // <--- AGREGAR ESTO: Indica que la carga terminó con éxito
+
+        } catch (error) {
+            console.error("Error en cargarBomberos:", error);
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error al cargar datos.</td></tr>`;
+            throw error; // Lanza el error para que el .then() no se ejecute si falló la carga
+        }
+    }
+
+    function marcarTodos(nuevoEstado) {
+        bomberos.forEach(b => {
+            // Solo marcamos a los que están visibles según el filtro actual (opcional)
+            // O a todos los de la lista cargada:
+            estados[b.legajo].estado = nuevoEstado;
+        });
+        actualizarContadores();
+        renderTabla();
+    }
+
+    function renderTabla() {
+        const busq = document.getElementById('buscador').value.toLowerCase();
+        const tbody = document.getElementById('tbody');
+        tbody.innerHTML = '';
+
+        const estadoEvento = "{{ evento.estado if evento else '' }}";
+        const estaBloqueado = (estadoEvento === "FINALIZADO" || estadoEvento === "ANULADO");
+
+        let visibles = bomberos.filter(b => {
+            const nombreCompleto = `${b.apellido} ${b.nombre}`.toLowerCase();
+            const coincideBusqueda = nombreCompleto.includes(busq);
+            const estadoActual = estados[b.legajo].estado;
+            return coincideBusqueda && (filtroActivo === 'TODOS' || estadoActual === filtroActivo);
+        });
+
+        visibles.forEach((b, i) => {
+            const e = estados[b.legajo];
+            const badgeColor = e.estado === 'PRESENTE' ? '#198754' : (e.estado === 'AUSENTE' ? '#dc3545' : '#fd7e14');
+            
+            const tr = document.createElement('tr');
+            tr.className = 'bombero-row align-middle';
+            tr.innerHTML = `
+                <td class="text-muted">${i + 1}</td>
+                <td>
+                    <div class="fw-bold">${b.apellido}, ${b.nombre}</div>
+                </td>
+                <td class="d-none d-md-table-cell text-muted small">${b.grado || ''}</td>
+                <td><span class="estado-badge" style="background:${badgeColor}; color:white">${e.estado}</span></td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-presente ${e.estado !== 'PRESENTE' ? 'btn-estado-inactivo' : ''}" 
+                                ${estaBloqueado ? 'disabled' : ''} 
+                                onclick="setEstado(${b.legajo},'PRESENTE')">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
+                        <button class="btn btn-ausente ${e.estado !== 'AUSENTE' ? 'btn-estado-inactivo' : ''}" 
+                                ${estaBloqueado ? 'disabled' : ''} 
+                                onclick="setEstado(${b.legajo},'AUSENTE')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${e.observacion}" 
+                        ${estaBloqueado ? 'disabled' : ''} onchange="setObs(${b.legajo}, this.value)">
+                </td>`;
+            tbody.appendChild(tr);
+        });
+        
+        document.getElementById('totalBomberos').textContent = bomberos.length;
+
+        // Bloqueo de botones de acción principales
+        if (estaBloqueado) {
+            // Buscamos por el ID directo que tienen tus botones
+            const btnGuardar = document.getElementById('btn-guardar-borrador');
+            const btnFinalizar = document.getElementById('btn-finalizar');
+            if (btnGuardar) btnGuardar.style.display = 'none';
+            if (btnFinalizar) btnFinalizar.style.display = 'none';
+            
+            // Ocultar cualquier botón de "Agregar posta" o "Eliminar"
+            document.querySelectorAll('.btn-outline-primary, .btn-outline-danger').forEach(b => {
+                if (!b.classList.contains('btn-volver')) b.style.display = 'none';
+            });
+        }
+    }
+
+    function setEstado(legajo, nuevoEstado) {
+        // Bloqueo de seguridad: si el evento está finalizado, no permitir cambios
+        if ("{{ evento.estado if evento else '' }}" === "FINALIZADO") return;
+        if (estados[legajo].estado === nuevoEstado) return; 
+        
+        estados[legajo].estado = nuevoEstado;
+        actualizarContadores();
+        renderTabla(); 
+    }
+
+    function setObs(legajo, valor) {
+        // Bloqueo de seguridad igual al de setEstado
+        const estadoEvento = "{{ evento.estado if evento else '' }}";
+        if (estadoEvento === "FINALIZADO" || estadoEvento === "ANULADO") return;
+
+        estados[legajo].observacion = valor;
+    }
+
+    function actualizarContadores() {
+        let p=0, a=0, j=0;
+        Object.values(estados).forEach(e => {
+            if (e.estado==='PRESENTE') p++;
+            else if (e.estado==='AUSENTE') a++;
+            else if (e.estado==='JUSTIFICADO') j++;
+        });
+        document.getElementById('cntPresente').textContent = p;
+        document.getElementById('cntAusente').textContent  = a;
+        document.getElementById('cntJustif').textContent   = j;
+    }
+
+    function agregarPosta(nombreTema = '', calificadorSeleccionado = '') {
+        const contenedor = document.getElementById('contenedor-inputs-postas');
+        const estaBloqueado = ("{{ evento.estado if evento else '' }}" === "FINALIZADO");
+        contadorPostas++;
+
+        // Filtrado por jerarquía
+        const mostrarOficiales = document.getElementById('activarOficiales').checked;
+        const mostrarSuboficiales = document.getElementById('activarSuboficiales').checked;
+        const mostrarEncargados = document.getElementById('activarEncargados').checked;
+
+        const autorizados = bomberos.filter(p => {
+            const rango = (p.grado || "").toUpperCase();
+            if (mostrarOficiales && (rango.includes("OFICIAL") || rango.includes("JEFE"))) return true;
+            if (mostrarSuboficiales && (rango.includes("SUBOFICIAL") || rango.includes("SARGEN") || rango.includes("CABO"))) return true;
+            if (mostrarEncargados && p.es_encargado) return true;
+            return false;
+        });
+
+        let opciones = '<option value="">-- Calificador/Instructor --</option>';
+        autorizados.forEach(c => {
+            const selected = (String(c.legajo) == String(calificadorSeleccionado)) ? 'selected' : '';
+            opciones += `<option value="${c.legajo}" ${selected}>${c.apellido}, ${c.nombre}</option>`;
+        });
+
+        const div = document.createElement('div');
+        div.className = 'row g-2 mb-2 p-2 border-bottom bg-white rounded align-items-center';
+        div.id = `posta-${contadorPostas}`;
+        div.innerHTML = `
+            <div class="col-md-6">
+                <input type="text" name="nombre_tema" class="form-control form-control-sm" 
+                    placeholder="Nombre del Tema / Posta" value="${nombreTema}" ${estaBloqueado ? 'disabled' : ''}>
+            </div>
+            <div class="col-md-5">
+                <select name="calificador_legajo" class="form-select form-select-sm select-calificador-posta" ${estaBloqueado ? 'disabled' : ''}>
+                    ${opciones}
+                </select>
+            </div>
+            <div class="col-md-1 text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger" 
+                    onclick="eliminarPosta(${contadorPostas})" ${estaBloqueado ? 'disabled' : ''}>
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        `;
+        contenedor.appendChild(div);
+    }
+
+    function actualizarComboCalificadores() {
+        const mostrarOficiales = document.getElementById('activarOficiales').checked;
+        const mostrarSuboficiales = document.getElementById('activarSuboficiales').checked;
+        const mostrarEncargados = document.getElementById('activarEncargados').checked;
+
+        const autorizados = bomberos.filter(p => {
+            const rango = (p.grado || "").toUpperCase(); 
+            if (mostrarOficiales && (rango.includes("OFICIAL") || rango.includes("JEFE"))) return true;
+            if (mostrarSuboficiales && (rango.includes("SUBOFICIAL") || rango.includes("SARGEN") || rango.includes("CABO"))) return true;
+            if (mostrarEncargados && p.es_encargado) return true;
+            return false;
+        });
+
+        document.querySelectorAll('.select-calificador-posta').forEach(select => {
+            const valorActual = select.value;
+            select.innerHTML = '<option value="">-- Seleccioná --</option>';
+            autorizados.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.legajo;
+                opt.textContent = `${p.apellido}, ${p.nombre}`;
+                select.appendChild(opt);
+            });
+            select.value = valorActual;
+        });
+    }
+
+    function eliminarPosta(id) {
+        if ("{{ evento.estado if evento else '' }}" === "FINALIZADO") return;
+        const elemento = document.getElementById(`posta-${id}`);
+        if (elemento) elemento.remove();
+    }
+
+    async function enviarAsistencia(confirmarFinal) {
+        // 1. Bloqueo de seguridad preventivo
+        const estadoActual = "{{ evento.estado if evento else '' }}";
+        if (estadoActual === 'FINALIZADO' || estadoActual === 'ANULADO') {
+            alert('Este evento ya está cerrado y no puede modificarse.');
+            return;
+        }
+
+        const fecha = document.getElementById('fecha').value;
+        const tipo = document.getElementById('tipo').value;
+        if (!fecha || !tipo) { 
+            alert('Error: La fecha y el tipo de evento son obligatorios.'); 
+            return; 
+        }
+
+        // 2. Captura de Temas/Postas (solo si hay texto en el tema)
+        const temas = [];
+        document.querySelectorAll('#contenedor-inputs-postas .row').forEach(div => {
+            const nombreInput = div.querySelector('input[name="nombre_tema"]');
+            const calificadorSelect = div.querySelector('select[name="calificador_legajo"]');
+            
+            if (nombreInput && nombreInput.value.trim() !== "") {
+                temas.push({
+                    nombre: nombreInput.value.trim(),
+                    calificador_legajo: calificadorSelect.value || null
+                });
+            }
+        });
+
+        // 3. Construcción del Payload
+        const payload = {
+            evento_id: eventoIdExistente,
+            fecha: fecha,
+            tipo: tipo,
+            departamento_id: document.getElementById('filtroDepartamento').value,
+            descripcion: document.getElementById('descripcion').value,
+            hora_inicio: document.getElementById('hora_inicio').value,
+            hora_fin: document.getElementById('hora_fin').value,
+            concepto_id: document.getElementById('concepto_id').value || null,
+            confirmar: confirmarFinal,
+            califica_oficiales: document.getElementById('activarOficiales').checked,
+            califica_suboficiales: document.getElementById('activarSuboficiales').checked,
+            califica_encargados: document.getElementById('activarEncargados').checked,
+            temas: temas, 
+            asistencias: bomberos.map(b => ({
+                legajo: b.legajo,
+                estado: estados[b.legajo].estado,
+                observacion: estados[b.legajo].observacion
+            }))
+        };
+
+        try {
+            const res = await fetch('/asistencia/guardar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.ok) {
+                alert(confirmarFinal ? "¡Asistencia Finalizada correctamente!" : "¡Borrador guardado!");
+                window.location.href = confirmarFinal ? '/asistencia/historial' : '/inicio';
+            } else { 
+                alert('Error del servidor: ' + (data.error || 'Error desconocido')); 
+            }
+        } catch(e) { 
+            alert('Error de conexión: No se pudo contactar con el servidor.'); 
+        }
+    }
+
+    function filtrar(tipo, btn) {
+        filtroActivo = tipo;
+        document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderTabla();
+    }
+
+    // --- FUNCIÓN DE BLOQUEO DEFINITIVA ---
+    function aplicarBloqueoSeguridad() {
+        const estado = "{{ evento.estado if evento else '' }}";
+        
+        // Si el estado no es BORRADOR o vacío, bloqueamos TODO
+        if (estado === 'FINALIZADO' || estado === 'ANULADO') {
+            console.log("SIAB: Protegiendo registro finalizado.");
+
+            // 1. Bloqueamos todos los campos de texto, selectores y checkboxes
+            document.querySelectorAll('input, select, textarea').forEach(el => {
+                el.disabled = true;
+                el.style.backgroundColor = "#e9ecef"; 
+            });
+
+            // 2. Ocultamos los botones de guardado/confirmar y el de agregar temas
+            document.querySelectorAll('.btn-accion-siab, #btn-agregar-posta').forEach(btn => {
+                btn.style.setProperty('display', 'none', 'important');
+            });
+
+            // 3. Bloqueamos los botones de asistencia en la tabla (Presente/Ausente)
+            setTimeout(() => {
+                document.querySelectorAll('.btn-group button, .btn-outline-danger').forEach(b => {
+                    b.disabled = true;
+                    b.onclick = null; // Quitamos el evento de clic por seguridad extra
+                    if(b.classList.contains('btn-outline-danger')) b.style.display = 'none';
+                });
+            }, 300);
+        }
+    }
+</script>
+{% endblock %}
