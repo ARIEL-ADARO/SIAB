@@ -42,6 +42,50 @@
                 </div>
             </div>
 
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Mi Calificación Institucional</h5>
+                    <span class="badge bg-warning text-dark">Total: {{ datos.puntaje_final }} pts</span>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-5 text-center">
+                            <canvas id="graficoPilares" style="max-height: 200px;"></canvas>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="p-3 border rounded bg-light text-center">
+                                <h6 class="text-muted small">ESTADO ACTUAL:</h6>
+                                <h3 class="fw-bold {% if 'INSUFICIENTE' in datos.calif_letra %}text-danger{% else %}text-success{% endif %}">
+                                    {{ datos.calif_letra }}
+                                </h3>
+                                <small class="text-muted">Actualizado según Régimen de Calificaciones</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('graficoPilares').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'radar',
+                        data: {
+                            labels: ['VOCACIÓN', 'CAP. TÉCNICA', 'CUALIDADES', 'ASISTENCIA'],
+                            datasets: [{
+                                label: 'Puntos',
+                                data: [{{ datos.pilar_vocacion }}, {{ datos.pilar_capacidad }}, {{ datos.pilar_cualidades }}, {{ datos.pilar_asistencia }}],
+                                backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                                borderColor: 'rgba(220, 53, 69, 1)',
+                                pointBackgroundColor: 'rgba(220, 53, 69, 1)'
+                            }]
+                        },
+                        options: { scales: { r: { suggestedMin: 0, suggestedMax: 5 } }, plugins: { legend: { display: false } } }
+                    });
+                });
+            </script>
+
             <div class="card shadow-sm mt-2">
                 <div class="card-header bg-dark text-white">
                     <h5 class="mb-0">Mi Actividad Reciente</h5>

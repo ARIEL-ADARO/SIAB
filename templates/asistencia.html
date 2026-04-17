@@ -253,11 +253,13 @@
             {# ESTA ES LA LLAVE DE SEGURIDAD REAL #}
             {% if not evento or evento.estado == 'BORRADOR' or evento.estado == '' %}
             <div class="btn-group">
-                <button id="btn-guardar-borrador" type="button" onclick="enviarAsistencia(false)" class="btn btn-warning px-4">
+                <button id="btn-guardar-borrador" type="button" onclick="enviarAsistencia(false)" 
+                        class="btn btn-warning px-4 btn-accion-siab">
                     <i class="bi bi-save"></i> Guardar Borrador
                 </button>
-                
-                <button id="btn-finalizar" type="button" onclick="enviarAsistencia(true)" class="btn btn-success px-4">
+
+                <button id="btn-finalizar" type="button" onclick="enviarAsistencia(true)" 
+                        class="btn btn-success px-4 btn-accion-siab">
                     <i class="bi bi-check-circle"></i> Finalizar y Confirmar
                 </button>
             </div>
@@ -419,7 +421,8 @@
         tbody.innerHTML = '';
 
         const estadoEvento = "{{ evento.estado if evento else '' }}";
-        const estaBloqueado = (estadoEvento === "FINALIZADO" || estadoEvento === "ANULADO");
+        // Agregamos 'CONFIRMADO' a la lógica de bloqueo
+        const estaBloqueado = (estadoEvento === "FINALIZADO" || estadoEvento === "CONFIRMADO" || estadoEvento === "ANULADO");
 
         let visibles = bomberos.filter(b => {
             const nombreCompleto = `${b.apellido} ${b.nombre}`.toLowerCase();
@@ -466,18 +469,24 @@
 
         // Bloqueo de botones de acción principales
         if (estaBloqueado) {
-            // Buscamos por el ID directo que tienen tus botones
+            // 1. Ocultamos los botones de guardado/confirmar
             const btnGuardar = document.getElementById('btn-guardar-borrador');
             const btnFinalizar = document.getElementById('btn-finalizar');
             if (btnGuardar) btnGuardar.style.display = 'none';
             if (btnFinalizar) btnFinalizar.style.display = 'none';
             
-            // Ocultar cualquier botón de "Agregar posta" o "Eliminar"
+            // 2. Ocultamos botones de "Agregar posta" o "Eliminar"
             document.querySelectorAll('.btn-outline-primary, .btn-outline-danger').forEach(b => {
                 if (!b.classList.contains('btn-volver')) b.style.display = 'none';
             });
+
+            // 3. REFUERZO: Bloqueamos inputs de datos del evento y postas
+            // Esto evita que puedan cambiar la fecha, descripción o calificadores de postas
+            document.querySelectorAll('#seccion-postas input, #seccion-postas select, .card-body input, .card-body select').forEach(el => {
+                el.disabled = true;
+            });
         }
-    }
+    } // <-- Aquí termina la función renderTabla
 
     function setEstado(legajo, nuevoEstado) {
         // Bloqueo de seguridad: si el evento está finalizado, no permitir cambios
@@ -668,29 +677,17 @@
     function aplicarBloqueoSeguridad() {
         const estado = "{{ evento.estado if evento else '' }}";
         
-        // Si el estado no es BORRADOR o vacío, bloqueamos TODO
-        if (estado === 'FINALIZADO' || estado === 'ANULADO') {
-            console.log("SIAB: Protegiendo registro finalizado.");
+        // Bloqueamos si es FINALIZADO o CONFIRMADO
+        if (estado === 'FINALIZADO' || estado === 'CONFIRMADO' || estado === 'ANULADO') {
+            
+            // 1. Ocultar botones principales usando IDs y Clases (Doble seguridad)
+            const elementosAocultar = document.querySelectorAll('.btn-accion-siab, #btn-agregar-posta');
+            elementosAocultar.forEach(el => el.style.display = 'none');
 
-            // 1. Bloqueamos todos los campos de texto, selectores y checkboxes
+            // 2. Bloquear entradas
             document.querySelectorAll('input, select, textarea').forEach(el => {
                 el.disabled = true;
-                el.style.backgroundColor = "#e9ecef"; 
             });
-
-            // 2. Ocultamos los botones de guardado/confirmar y el de agregar temas
-            document.querySelectorAll('.btn-accion-siab, #btn-agregar-posta').forEach(btn => {
-                btn.style.setProperty('display', 'none', 'important');
-            });
-
-            // 3. Bloqueamos los botones de asistencia en la tabla (Presente/Ausente)
-            setTimeout(() => {
-                document.querySelectorAll('.btn-group button, .btn-outline-danger').forEach(b => {
-                    b.disabled = true;
-                    b.onclick = null; // Quitamos el evento de clic por seguridad extra
-                    if(b.classList.contains('btn-outline-danger')) b.style.display = 'none';
-                });
-            }, 300);
         }
     }
 </script>

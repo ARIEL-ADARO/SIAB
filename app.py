@@ -136,14 +136,14 @@ def inicio():
         cur.execute("""SELECT COUNT(*) as total FROM eventos
                        WHERE MONTH(fecha) = MONTH(CURDATE())
                        AND YEAR(fecha) = YEAR(CURDATE())
-                       AND estado = 'CONFIRMADO'""")
+                       AND estado = 'FINALIZADO'""")
         stats["eventos_mes"] = cur.fetchone()["total"]
 
         cur.execute("""SELECT COUNT(*) as total FROM asistencia a
                        JOIN eventos e ON a.evento_id = e.id
                        WHERE a.estado = 'PRESENTE'
                        AND MONTH(e.fecha) = MONTH(CURDATE())
-                       AND e.estado = 'CONFIRMADO'""")
+                       AND e.estado = 'FINALIZADO'""")
         stats["asistencias_mes"] = cur.fetchone()["total"]
 
         cur.execute("""SELECT COUNT(*) as total FROM cursos
@@ -278,7 +278,7 @@ def guardar_asistencia():
     if not tipo or not fecha or not asistencias:
         return jsonify({"ok": False, "error": "Faltan datos obligatorios."})
 
-    estado = "CONFIRMADO" if confirmar else "BORRADOR"
+    estado = "FINALIZADO" if confirmar else "BORRADOR"
 
     conn = get_db()
     if not conn:
@@ -1034,7 +1034,7 @@ def reporte_liquidacion():
                            valor_punto=valor_punto)
 
 # ============================================================
-# PERFIL PERSONAL - MI LEGAJO
+# PERFIL PERSONAL - MI LEGAJO (CON CÁLCULO DE PILARES)
 # ============================================================
 
 @app.route("/mi-perfil")
@@ -1052,7 +1052,7 @@ def mi_perfil():
         cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
         datos = cur.fetchone()
         
-        # 1. Estadísticas anuales (Solo eventos validados)
+        # 2. Estadísticas anuales
         cur.execute("""
             SELECT COUNT(*) as total 
             FROM asistencia a
@@ -1064,7 +1064,7 @@ def mi_perfil():
         """, (legajo,))
         datos['asistencias_anio'] = cur.fetchone()['total']
         
-        # 2. Promedio de capacitación (Solo de eventos validados)
+        # 3. Promedio de capacitación
         cur.execute("""
             SELECT AVG(ant.nota) as promedio
             FROM asistencia_notas_temas ant
@@ -1075,21 +1075,65 @@ def mi_perfil():
         res_promedio = cur.fetchone()['promedio']
         datos['promedio_general'] = round(res_promedio, 2) if res_promedio else 0.0
 
-        # 3. Historial mejorado
+        # --- INICIO CÁLCULO DE LOS 4 PILARES (RÉGIMEN ALMAFUERTE) ---
+        
+        # Pilar 4: ASISTENCIA (Cálculo automático basado en % de presencia)
+        # Consultamos total de eventos vs presentes del bombero
         cur.execute("""
             SELECT 
-                e.fecha, 
-                e.tipo, 
-                e.descripcion, 
-                a.estado as asistencia_estado, 
-                e.estado as evento_status, 
-                a.calificacion
+                COUNT(*) as total_eventos,
+                SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as presentes
             FROM asistencia a
             JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s
-              AND e.estado != 'ANULADO'
-            ORDER BY e.fecha DESC
-            LIMIT 15
+            WHERE a.legajo = %s AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
+        """, (legajo,))
+        res_asistencia = cur.fetchone()
+        
+        def calcular_escala_5(porcentaje):
+            if porcentaje >= 100: return 5
+            if porcentaje >= 80: return 4
+            if porcentaje >= 60: return 3
+            if porcentaje >= 40: return 2
+            if porcentaje >= 25: return 1
+            return 0
+
+        porc = (res_asistencia['presentes'] / res_asistencia['total_eventos'] * 100) if res_asistencia['total_eventos'] > 0 else 0
+        datos['pilar_asistencia'] = calcular_escala_5(porc)
+        
+        # --- CÁLCULO DE PILARES Y PROMEDIO FINAL ---
+        
+        # Pilares Temporales (Valores de prueba hasta automatizar cada uno)
+        datos['pilar_vocacion'] = 3.0  
+        datos['pilar_capacidad'] = round((datos['promedio_general'] / 2), 1) if datos['promedio_general'] else 0 
+        datos['pilar_cualidades'] = 4.0 
+        
+        # 1. Suma de los 4 pilares (Máximo posible: 20 puntos)
+        suma_total_pilares = datos['pilar_asistencia'] + datos['pilar_vocacion'] + datos['pilar_capacidad'] + datos['pilar_cualidades']
+        
+        # 2. Nota Final Promediada (Escala de 0 a 5)
+        # Esto es lo que se muestra como "Total" en el gráfico y perfil
+        datos['puntaje_final'] = round(suma_total_pilares / 4, 2)
+        
+        # 3. Determinación de la Letra (Se basa en la suma de 0 a 20 según tu tabla Puntos.csv)
+        if suma_total_pilares >= 19: 
+            datos['calif_letra'] = "EXCELENTE (E)"
+        elif suma_total_pilares >= 16: 
+            datos['calif_letra'] = "MUY BUENO (MB)"
+        elif suma_total_pilares >= 10: 
+            datos['calif_letra'] = "BUENO (B)"
+        else: 
+            datos['calif_letra'] = "INSUFICIENTE (I)"
+
+        # --- FIN CÁLCULO DE PILARES ---
+
+        # 4. Historial
+        cur.execute("""
+            SELECT e.fecha, e.tipo, e.descripcion, a.estado as asistencia_estado, 
+                   e.estado as evento_status, a.calificacion
+            FROM asistencia a
+            JOIN eventos e ON a.evento_id = e.id
+            WHERE a.legajo = %s AND e.estado != 'ANULADO'
+            ORDER BY e.fecha DESC LIMIT 15
         """, (legajo,))
         historial = cur.fetchall()
         
