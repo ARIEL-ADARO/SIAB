@@ -1076,53 +1076,71 @@ def mi_perfil():
         datos['promedio_general'] = round(res_promedio, 2) if res_promedio else 0.0
 
         # --- INICIO CÁLCULO DE LOS 4 PILARES (RÉGIMEN ALMAFUERTE) ---
+
+        # PILAR 1: VOCACIÓN (Automatizado)
+        cur.execute("""
+            SELECT COUNT(*) as cant FROM asistencia a JOIN eventos e ON a.evento_id = e.id
+            WHERE a.legajo = %s AND a.estado = 'PRESENTE'
+            AND e.tipo IN ('INCENDIO', 'RESCATE', 'AUXILIO', 'SERVICIO PROPIO')
+            AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
+        """, (legajo,))
         
-        # Pilar 4: ASISTENCIA (Cálculo automático basado en % de presencia)
-        # Consultamos total de eventos vs presentes del bombero
+        # PILAR 1: VOCACIÓN (Dinámico - Basado en el máximo del cuartel)
+        servicios_actuales = cur.fetchone()['cant']
+
+        # Buscamos quién es el bombero con más salidas para fijar la vara (el 100%)
+        # VOCACIÓN: Solo Incendios, Rescates y Auxilios
+        cur.execute("""
+            SELECT COUNT(*) as cant FROM asistencia a JOIN eventos e ON a.evento_id = e.id
+            WHERE a.legajo = %s AND a.estado = 'PRESENTE'
+            AND e.tipo IN ('INCENDIO', 'RESCATE', 'AUXILIO') 
+            AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
+        """, (legajo,))
+        siniestros_bombero = cur.fetchone()['cant']
+        
+        # Máximo de siniestros de alguien del cuartel
+        cur.execute("SELECT COUNT(*) as max_c FROM asistencia a JOIN eventos e ON a.evento_id = e.id WHERE a.estado='PRESENTE' AND e.tipo IN ('INCENDIO','RESCATE','AUXILIO') GROUP BY a.legajo ORDER BY max_c DESC LIMIT 1")
+        res_max_s = cur.fetchone()
+        max_s = res_max_s['max_c'] if res_max_s else 1
+        
+        datos['pilar_vocacion'] = round((siniestros_bombero * 5) / max_s, 2)
+        # PILAR 2: CAPACIDAD TÉCNICA (Tu promedio 0-10 pasado a 0-5)
+        datos['pilar_capacidad'] = round(datos['promedio_general'] / 2, 1)
+
+        # ASISTENCIA: Solo Prácticas, Instrucciones y Reuniones
         cur.execute("""
             SELECT 
-                COUNT(*) as total_eventos,
-                SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as presentes
-            FROM asistencia a
-            JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
+                COUNT(e.id) as total_obligatorios,
+                SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as mis_presencias
+            FROM eventos e
+            LEFT JOIN asistencia a ON e.id = a.evento_id AND a.legajo = %s
+            WHERE e.tipo IN ('PRACTICA', 'INSTRUCCION', 'REUNION')
+              AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
         """, (legajo,))
-        res_asistencia = cur.fetchone()
+        res_asis = cur.fetchone()
         
-        def calcular_escala_5(porcentaje):
-            if porcentaje >= 100: return 5
-            if porcentaje >= 80: return 4
-            if porcentaje >= 60: return 3
-            if porcentaje >= 40: return 2
-            if porcentaje >= 25: return 1
-            return 0
+        porc_asis = (res_asis['mis_presencias'] / res_asis['total_obligatorios'] * 100) if res_asis['total_obligatorios'] > 0 else 0
+        
+        # Escala de 0 a 5 según porcentaje
+        if porc_asis >= 80: datos['pilar_asistencia'] = 5.0
+        elif porc_asis >= 70: datos['pilar_asistencia'] = 4.0
+        elif porc_asis >= 60: datos['pilar_asistencia'] = 3.0
+        else: datos['pilar_asistencia'] = 1.0
 
-        porc = (res_asistencia['presentes'] / res_asistencia['total_eventos'] * 100) if res_asistencia['total_eventos'] > 0 else 0
-        datos['pilar_asistencia'] = calcular_escala_5(porc)
+        # PILAR 3: CUALIDADES (Carga real de la mesa calificadora)
+        cur.execute("SELECT nota_cualidades FROM calificaciones_cualidades WHERE legajo = %s", (legajo,))
+        res_c = cur.fetchone()
+        datos['pilar_cualidades'] = float(res_c['nota_cualidades']) if res_c else 0.0
+
+        # CÁLCULO FINAL (Suma para la Letra, Promedio para la Nota)
+        suma_total = datos['pilar_vocacion'] + datos['pilar_capacidad'] + datos['pilar_asistencia'] + datos['pilar_cualidades']
+        datos['puntaje_final'] = round(suma_total / 4, 2) # ESTA ES TU NOTA 0-5
         
-        # --- CÁLCULO DE PILARES Y PROMEDIO FINAL ---
-        
-        # Pilares Temporales (Valores de prueba hasta automatizar cada uno)
-        datos['pilar_vocacion'] = 3.0  
-        datos['pilar_capacidad'] = round((datos['promedio_general'] / 2), 1) if datos['promedio_general'] else 0 
-        datos['pilar_cualidades'] = 4.0 
-        
-        # 1. Suma de los 4 pilares (Máximo posible: 20 puntos)
-        suma_total_pilares = datos['pilar_asistencia'] + datos['pilar_vocacion'] + datos['pilar_capacidad'] + datos['pilar_cualidades']
-        
-        # 2. Nota Final Promediada (Escala de 0 a 5)
-        # Esto es lo que se muestra como "Total" en el gráfico y perfil
-        datos['puntaje_final'] = round(suma_total_pilares / 4, 2)
-        
-        # 3. Determinación de la Letra (Se basa en la suma de 0 a 20 según tu tabla Puntos.csv)
-        if suma_total_pilares >= 19: 
-            datos['calif_letra'] = "EXCELENTE (E)"
-        elif suma_total_pilares >= 16: 
-            datos['calif_letra'] = "MUY BUENO (MB)"
-        elif suma_total_pilares >= 10: 
-            datos['calif_letra'] = "BUENO (B)"
-        else: 
-            datos['calif_letra'] = "INSUFICIENTE (I)"
+        # Determinamos la letra según la suma (0-20)
+        if suma_total >= 19: datos['calif_letra'] = "EXCELENTE (E)"
+        elif suma_total >= 16: datos['calif_letra'] = "MUY BUENO (MB)"
+        elif suma_total >= 10: datos['calif_letra'] = "BUENO (B)"
+        else: datos['calif_letra'] = "INSUFICIENTE (I)"
 
         # --- FIN CÁLCULO DE PILARES ---
 
@@ -1140,6 +1158,67 @@ def mi_perfil():
         conn.close()
 
     return render_template("mi_perfil.html", datos=datos, historial=historial)
+
+@app.route("/mesa-calificadora", methods=["GET", "POST"])
+@login_requerido
+def mesa_calificadora():
+    # 1. Identificación del usuario
+    mi_grado = session.get("grado", "").upper()
+    mi_rol = session.get("rol", "").upper()
+    mi_legajo = session.get("legajo")
+    
+    # 2. Control de Acceso (Solo rangos autorizados o Admin)
+    autorizados = ['JEFATURA', 'OFICIAL', 'SUB-OFICIAL', 'ADMIN']
+    if mi_grado not in autorizados and mi_rol != 'ADMIN':
+        return "No tienes autorización para acceder a la Mesa Calificadora.", 403
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # 3. Procesar el Guardado (POST)
+    if request.method == "POST":
+        legajo_dest = request.form.get("legajo")
+        nota = request.form.get("nota")
+        obs = request.form.get("observacion")
+        
+        cur.execute("""
+            INSERT INTO calificaciones_cualidades (legajo, nota_cualidades, observacion) 
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE nota_cualidades = %s, observacion = %s
+        """, (legajo_dest, nota, obs, nota, obs))
+        conn.commit()
+
+    # 4. LÓGICA DE JERARQUÍA (El Filtro de visibilidad)
+    if mi_rol == 'ADMIN' or mi_grado == 'JEFATURA':
+        # El Jefe/Admin ve a todos (menos a sí mismo)
+        query_filtro = "WHERE l.legajo != %s"
+    elif mi_grado == 'OFICIAL':
+        # El Oficial ve a Suboficiales y Bomberos (no ve Jefatura)
+        query_filtro = "WHERE l.legajo != %s AND l.grado NOT IN ('JEFATURA')"
+    elif mi_grado == 'SUB-OFICIAL':
+        # El Suboficial solo ve a Bomberos y Aspirantes
+        query_filtro = "WHERE l.legajo != %s AND l.grado NOT IN ('JEFATURA', 'OFICIAL', 'SUB-OFICIAL')"
+    else:
+        query_filtro = "WHERE 1=0" # Por seguridad, nadie más ve nada
+
+    # 5. Consulta Final con comparación de performance
+    # Consulta mejorada con datos históricos
+    cur.execute(f"""
+        SELECT 
+            l.legajo, l.apellido, l.nombre, l.grado, 
+            COALESCE(cc.nota_cualidades, 0) as nota_actual,
+            COALESCE(cc.observacion, '') as observacion,
+            COALESCE(cc.anio_anterior_puntos, 0) as nota_anterior
+        FROM legajos l
+        LEFT JOIN calificaciones_cualidades cc ON l.legajo = cc.legajo
+        {query_filtro}
+        ORDER BY l.apellido ASC
+    """, (mi_legajo,))
+    
+    bomberos = cur.fetchall()
+    conn.close()
+    
+    return render_template("mesa_calificadora.html", bomberos=bomberos)
 
 # ============================================================
 # MAIN
