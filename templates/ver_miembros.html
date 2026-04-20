@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-users"></i> Integrantes: {{ depto.nombre }}</h2>
+        <a href="{{ url_for('departamentos') }}" class="btn btn-secondary">Volver</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Legajo</th>
+                        <th>Grado</th>
+                        <th>Apellido y Nombre</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in miembros %}
+                    <tr>
+                        <td>#{{ m.legajo }}</td>
+                        <td><span class="badge bg-danger">{{ m.grado }}</span></td>
+                        <td><strong>{{ m.apellido }}, {{ m.nombre }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center py-4 text-muted">
+                            Este departamento aún no tiene integrantes asignados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

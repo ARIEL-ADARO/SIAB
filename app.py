@@ -101,6 +101,10 @@ def login():
             session["rol"]        = usuario["rol"]
             session["legajo"]     = usuario["legajo"]
             session["nombre"]     = nombre_completo
+            
+            # --- AGREGA ESTA LÍNEA PARA ELIMINAR EL 'NONE' ---
+            session["grado"]      = usuario.get("grado") or "BOMBERO" 
+            # -------------------------------------------------
 
             flash(f"Bienvenido, {nombre_completo}!", "success")
             return redirect(url_for("inicio"))
@@ -207,8 +211,9 @@ def get_bomberos():
     conn.close()
     return jsonify(bomberos)
 
-@app.route("/asistencia")
+@app.route("/asistencia", methods=["GET", "POST"])
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA') # <--- Esto es lo que lo rebota si intenta entrar
 def asistencia():
     conn = get_db()
     conceptos     = []
@@ -457,46 +462,44 @@ def editar_borrador(evento_id):
 @app.route("/asistencia/historial")
 @login_requerido
 def historial_asistencia():
-    # Leemos si el usuario marcó el tilde (viene como parámetro en la URL)
     ver_anulados = request.args.get("ver_anulados") == "1"
+    legajo_usuario = session.get('legajo') # <--- PASO 1: Obtener quién es el usuario
     
     conn = get_db()
     eventos = []
+    
     if conn:
         cur = conn.cursor(dictionary=True)
         
-        # Lógica de filtro: Si NO quiere ver anulados, agregamos la condición
-        condicion_anulados = "" if ver_anulados else "WHERE e.estado != 'ANULADO'"
-        
-        query = f"""
+        # PASO 2: La consulta ahora tiene el "mi_estado"
+        query = """
             SELECT 
-                e.id, e.tipo, e.descripcion, e.fecha, e.hora_inicio, e.estado, 
-                c.concepto, 
-                d.nombre AS nombre_departamento,
-                COUNT(a.id) as total,
-                SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as presentes,
-                SUM(CASE WHEN a.estado = 'AUSENTE' THEN 1 ELSE 0 END) as ausentes,
-                SUM(CASE WHEN a.estado = 'JUSTIFICADO' THEN 1 ELSE 0 END) as justificados
+                e.*, 
+                d.nombre as nombre_departamento,
+                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'PRESENTE') as presentes,
+                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'AUSENTE') as ausentes,
+                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'JUSTIFICADO') as justificados,
+                a_personal.estado as mi_estado
             FROM eventos e
-            LEFT JOIN conceptos c ON e.concepto_id = c.id
             LEFT JOIN departamentos d ON e.departamento_id = d.id
-            LEFT JOIN asistencia a ON e.id = a.evento_id
-            {condicion_anulados} -- Insertamos el filtro aquí
-            GROUP BY e.id
-            ORDER BY e.fecha DESC, e.id DESC
-            LIMIT 100
+            LEFT JOIN asistencia a_personal ON e.id = a_personal.evento_id AND a_personal.legajo = %s
+            WHERE 1=1
         """
         
-        cur.execute(query)
+        if not ver_anulados:
+            query += " AND e.estado != 'ANULADO'"
+            
+        query += " ORDER BY e.fecha DESC, e.id DESC LIMIT 50"
+        
+        cur.execute(query, (legajo_usuario,)) # <--- PASO 3: Pasamos el legajo aquí
         eventos = cur.fetchall()
         conn.close()
-        
-    return render_template("historial_asistencia.html", 
-                           eventos=eventos, 
-                           ver_anulados=ver_anulados)
+
+    return render_template("historial_asistencia.html", eventos=eventos, ver_anulados=ver_anulados)
 
 @app.route("/asistencia/detalle/<int:evento_id>")
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA')
 def detalle_asistencia(evento_id):
     conn = get_db()
     evento    = None
@@ -648,6 +651,7 @@ def departamentos():
 
 @app.route("/departamentos/<int:depto_id>/miembros")
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA') # <--- Bloqueo para bomberos
 def miembros_departamento(depto_id):
     conn = get_db()
     depto = None
@@ -689,6 +693,7 @@ def miembros_departamento(depto_id):
 
 @app.route("/departamentos/<int:depto_id>/agregar", methods=["POST"])
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA') # <--- Bloqueo para bomberos
 def agregar_miembro(depto_id):
     # 'getlist' permite capturar todos los bomberos seleccionados en el select múltiple
     legajos = request.form.getlist("legajo")
@@ -752,15 +757,22 @@ def quitar_miembro(bd_id):
 def cursos():
     conn = get_db()
     lista = []
+    legajo_usuario = session.get('legajo') # Obtenemos el legajo del usuario actual
+    
     if conn:
         cur = conn.cursor(dictionary=True)
+        # Agregamos la subconsulta 'soy_participante' para marcar si el usuario estuvo ahí
         cur.execute("""
-            SELECT c.*, COUNT(cp.id) as participantes
+            SELECT 
+                c.*, 
+                COUNT(cp.id) as participantes,
+                (SELECT COUNT(*) FROM curso_participantes 
+                 WHERE curso_id = c.id AND legajo = %s) as soy_participante
             FROM cursos c
             LEFT JOIN curso_participantes cp ON c.id = cp.curso_id
             GROUP BY c.id
             ORDER BY c.fecha_inicio DESC
-        """)
+        """, (legajo_usuario,))
         lista = cur.fetchall()
         conn.close()
     return render_template("cursos.html", cursos=lista)
@@ -768,43 +780,54 @@ def cursos():
 
 @app.route("/cursos/nuevo", methods=["GET", "POST"])
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA')
 def nuevo_curso():
     if request.method == "POST":
         nombre      = request.form.get("nombre")
         institucion = request.form.get("institucion", "")
         fecha_ini   = request.form.get("fecha_inicio") or None
         fecha_fin   = request.form.get("fecha_fin") or None
-        horas       = request.form.get("horas") or None
+        horas       = request.form.get("horas") or 0
         descripcion = request.form.get("descripcion", "")
         legajos     = request.form.getlist("participantes")
+
+        if not nombre or not legajos:
+            flash("Faltan datos obligatorios (Nombre del curso o participantes).", "warning")
+            return redirect(url_for("nuevo_curso"))
 
         conn = get_db()
         if conn:
             try:
                 cur = conn.cursor()
+                # 1. Insertar el curso
                 cur.execute("""
                     INSERT INTO cursos (nombre, institucion, fecha_inicio, fecha_fin,
                                         horas, descripcion, creado_por)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (nombre, institucion, fecha_ini, fecha_fin,
-                      horas, descripcion, session["usuario_id"]))
+                      horas, descripcion, session.get("usuario_id")))
+                
                 curso_id = cur.lastrowid
-                for legajo in legajos:
-                    cur.execute("""
-                        INSERT INTO curso_participantes (curso_id, legajo)
-                        VALUES (%s, %s)
-                    """, (curso_id, legajo))
+
+                # 2. Insertar participantes (usando executemany para ser más rápido)
+                valores_participantes = [(curso_id, legajo) for legajo in legajos]
+                cur.executemany("""
+                    INSERT INTO curso_participantes (curso_id, legajo)
+                    VALUES (%s, %s)
+                """, valores_participantes)
+
                 conn.commit()
                 flash(f"Curso '{nombre}' registrado con {len(legajos)} participantes.", "success")
                 return redirect(url_for("cursos"))
-            except Error as e:
+            except Exception as e:
                 conn.rollback()
-                flash(f"Error al guardar: {e}", "danger")
+                flash(f"Error crítico al guardar: {e}", "danger")
             finally:
                 conn.close()
 
+    # GET: Carga de datos para el formulario
     conn = get_db()
-    bomberos      = []
+    bomberos = []
     departamentos = []
     if conn:
         cur = conn.cursor(dictionary=True)
@@ -819,7 +842,6 @@ def nuevo_curso():
         conn.close()
 
     return render_template("nuevo_curso.html", bomberos=bomberos, departamentos=departamentos)
-
 
 # ============================================================
 # BOMBEROS
@@ -970,28 +992,21 @@ def exportar_asistencia(evento_id, formato):
 # REPORTES Y ESTADÍSTICAS (AÑADIR AL FINAL DE APP.PY)
 # ============================================================
 
-@app.route("/reportes/liquidacion")
+@app.route("/reportes/actividad")
 @login_requerido
-@rol_requerido("ADMIN", "OFICIAL") # Solo niveles altos pueden liquidar
-def reporte_liquidacion():
-    # 1. Obtenemos fechas de los filtros (por defecto el mes actual)
+@rol_requerido("ADMIN", "JEFATURA") # Solo Jefatura puede ver el rendimiento general
+def reporte_actividad():
+    # 1. Filtros de fecha (por defecto el mes actual)
     fecha_desde = request.args.get("desde", datetime.now().strftime("%Y-%m-01"))
     fecha_hasta = request.args.get("hasta", datetime.now().strftime("%Y-%m-%d"))
     
     conn = get_db()
     data_reporte = []
-    valor_punto = 1.0 
     
     if conn:
         cur = conn.cursor(dictionary=True)
         
-        # 2. Buscamos cuánto vale el punto este año (de tu tabla config_puntos)
-        cur.execute("SELECT puntos_por_asistencia FROM config_puntos WHERE anio = YEAR(CURDATE()) LIMIT 1")
-        config = cur.fetchone()
-        if config: valor_punto = float(config['puntos_por_asistencia'])
-
-        # 3. LA CONSULTA SQL (PUNTO 1)
-        # Esta consulta une legajos, asistencias, eventos y notas.
+        # 2. La consulta SQL: Enfocada en Actividad Operativa y Capacitación
         query = """
             SELECT 
                 l.legajo, l.apellido, l.nombre, l.grado,
@@ -1005,33 +1020,31 @@ def reporte_liquidacion():
               AND l.situacion = 'ACTIVO'
               AND (e.fecha BETWEEN %s AND %s OR e.fecha IS NULL)
             GROUP BY l.legajo, l.apellido, l.nombre, l.grado
-            ORDER BY l.apellido ASC
-            LIMIT 5
+            ORDER BY total_asistencias DESC, l.apellido ASC
         """
         cur.execute(query, (fecha_desde, fecha_hasta))
         resultados = cur.fetchall()
         
-        # 4. Procesamos los datos para el HTML
+        # 3. Procesamos los datos
         for res in resultados:
             asistencias = res['total_asistencias'] or 0
             promedio = res['promedio_capacitacion'] or 0.0
-            total_puntos = asistencias * valor_punto
             
+            # Aquí podrías aplicar una fórmula de "Puntaje de Mérito" si la tienen
+            # Por ahora, simplemente listamos la actividad real.
             data_reporte.append({
                 'legajo': res['legajo'],
                 'nombre': f"{res['apellido']}, {res['nombre']}",
                 'grado': res['grado'],
                 'asistencias': asistencias,
-                'promedio': round(promedio, 2),
-                'puntos_totales': round(total_puntos, 2)
+                'promedio': round(promedio, 2)
             })
         conn.close()
 
-    return render_template("reporte_liquidacion.html", 
+    return render_template("reporte_actividad.html", 
                            reporte=data_reporte, 
                            desde=fecha_desde, 
-                           hasta=fecha_hasta,
-                           valor_punto=valor_punto)
+                           hasta=fecha_hasta)
 
 # ============================================================
 # PERFIL PERSONAL - MI LEGAJO (CON CÁLCULO DE PILARES)
@@ -1077,19 +1090,7 @@ def mi_perfil():
 
         # --- INICIO CÁLCULO DE LOS 4 PILARES (RÉGIMEN ALMAFUERTE) ---
 
-        # PILAR 1: VOCACIÓN (Automatizado)
-        cur.execute("""
-            SELECT COUNT(*) as cant FROM asistencia a JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s AND a.estado = 'PRESENTE'
-            AND e.tipo IN ('INCENDIO', 'RESCATE', 'AUXILIO', 'SERVICIO PROPIO')
-            AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
-        """, (legajo,))
-        
-        # PILAR 1: VOCACIÓN (Dinámico - Basado en el máximo del cuartel)
-        servicios_actuales = cur.fetchone()['cant']
-
-        # Buscamos quién es el bombero con más salidas para fijar la vara (el 100%)
-        # VOCACIÓN: Solo Incendios, Rescates y Auxilios
+        # PILAR 1: VOCACIÓN (Basado en Siniestros: Incendio, Rescate, Auxilio)
         cur.execute("""
             SELECT COUNT(*) as cant FROM asistencia a JOIN eventos e ON a.evento_id = e.id
             WHERE a.legajo = %s AND a.estado = 'PRESENTE'
@@ -1098,16 +1099,23 @@ def mi_perfil():
         """, (legajo,))
         siniestros_bombero = cur.fetchone()['cant']
         
-        # Máximo de siniestros de alguien del cuartel
-        cur.execute("SELECT COUNT(*) as max_c FROM asistencia a JOIN eventos e ON a.evento_id = e.id WHERE a.estado='PRESENTE' AND e.tipo IN ('INCENDIO','RESCATE','AUXILIO') GROUP BY a.legajo ORDER BY max_c DESC LIMIT 1")
+        # Máximo de siniestros del cuartel para fijar el 100% (5 pts)
+        cur.execute("""
+            SELECT COUNT(*) as max_c 
+            FROM asistencia a JOIN eventos e ON a.evento_id = e.id 
+            WHERE a.estado='PRESENTE' AND e.tipo IN ('INCENDIO','RESCATE','AUXILIO') 
+            GROUP BY a.legajo ORDER BY max_c DESC LIMIT 1
+        """)
         res_max_s = cur.fetchone()
-        max_s = res_max_s['max_c'] if res_max_s else 1
+        max_s = res_max_s['max_c'] if (res_max_s and res_max_s['max_c'] > 0) else 1
         
         datos['pilar_vocacion'] = round((siniestros_bombero * 5) / max_s, 2)
-        # PILAR 2: CAPACIDAD TÉCNICA (Tu promedio 0-10 pasado a 0-5)
-        datos['pilar_capacidad'] = round(datos['promedio_general'] / 2, 1)
 
-        # ASISTENCIA: Solo Prácticas, Instrucciones y Reuniones
+        # PILAR 2: CAPACIDAD TÉCNICA (Promedio de exámenes 0-10 pasado a 0-5)
+        # Usamos el promedio general que calculaste arriba
+        datos['pilar_capacidad'] = round(datos['promedio_general'] / 2, 2)
+
+        # PILAR 3: ASISTENCIA (Prácticas, Instrucciones y Reuniones)
         cur.execute("""
             SELECT 
                 COUNT(e.id) as total_obligatorios,
@@ -1119,27 +1127,38 @@ def mi_perfil():
         """, (legajo,))
         res_asis = cur.fetchone()
         
-        porc_asis = (res_asis['mis_presencias'] / res_asis['total_obligatorios'] * 100) if res_asis['total_obligatorios'] > 0 else 0
+        total_ev = res_asis['total_obligatorios'] or 0
+        mis_pres = res_asis['mis_presencias'] or 0
+        porc_asis = (mis_pres / total_ev * 100) if total_ev > 0 else 0
         
-        # Escala de 0 a 5 según porcentaje
+        # Escala institucional Almafuerte para Asistencia
         if porc_asis >= 80: datos['pilar_asistencia'] = 5.0
         elif porc_asis >= 70: datos['pilar_asistencia'] = 4.0
         elif porc_asis >= 60: datos['pilar_asistencia'] = 3.0
         else: datos['pilar_asistencia'] = 1.0
 
-        # PILAR 3: CUALIDADES (Carga real de la mesa calificadora)
+        # PILAR 4: CUALIDADES (Carga real de la mesa calificadora)
         cur.execute("SELECT nota_cualidades FROM calificaciones_cualidades WHERE legajo = %s", (legajo,))
         res_c = cur.fetchone()
         datos['pilar_cualidades'] = float(res_c['nota_cualidades']) if res_c else 0.0
 
-        # CÁLCULO FINAL (Suma para la Letra, Promedio para la Nota)
-        suma_total = datos['pilar_vocacion'] + datos['pilar_capacidad'] + datos['pilar_asistencia'] + datos['pilar_cualidades']
-        datos['puntaje_final'] = round(suma_total / 4, 2) # ESTA ES TU NOTA 0-5
+        # --- CÁLCULO FINAL (CORREGIDO) ---
+        # Usamos float() en cada pilar para evitar el choque con los tipos Decimal de la DB
+        suma_total = (
+            float(datos['pilar_vocacion']) + 
+            float(datos['pilar_capacidad']) + 
+            float(datos['pilar_asistencia']) + 
+            float(datos['pilar_cualidades'])
+        )
         
-        # Determinamos la letra según la suma (0-20)
-        if suma_total >= 19: datos['calif_letra'] = "EXCELENTE (E)"
-        elif suma_total >= 16: datos['calif_letra'] = "MUY BUENO (MB)"
-        elif suma_total >= 10: datos['calif_letra'] = "BUENO (B)"
+        nota_final = round(suma_total / 4, 2) 
+        datos['puntaje_final'] = nota_final
+        
+        # Clasificación por Letra (Escala 0 a 5)
+        if nota_final >= 4.50: datos['calif_letra'] = "SOBRESALIENTE (S)"
+        elif nota_final >= 4.00: datos['calif_letra'] = "MUY BUENO (MB)"
+        elif nota_final >= 3.00: datos['calif_letra'] = "BUENO (B)"
+        elif nota_final >= 2.00: datos['calif_letra'] = "REGULAR (R)"
         else: datos['calif_letra'] = "INSUFICIENTE (I)"
 
         # --- FIN CÁLCULO DE PILARES ---
@@ -1159,8 +1178,9 @@ def mi_perfil():
 
     return render_template("mi_perfil.html", datos=datos, historial=historial)
 
-@app.route("/mesa-calificadora", methods=["GET", "POST"])
+@app.route("/mesa-calificadora")
 @login_requerido
+@rol_requerido('ADMIN', 'JEFATURA')
 def mesa_calificadora():
     # 1. Identificación del usuario
     mi_grado = session.get("grado", "").upper()
@@ -1219,6 +1239,83 @@ def mesa_calificadora():
     conn.close()
     
     return render_template("mesa_calificadora.html", bomberos=bomberos)
+
+@app.route("/dashboard")
+@login_requerido
+def dashboard():
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    # Buscamos quiénes están para la baja (2 años < 2 pts)
+    cur.execute("""
+        SELECT l.apellido, l.nombre, l.legajo
+        FROM calificaciones_cualidades cc
+        JOIN legajos l ON cc.legajo = l.legajo
+        WHERE cc.nota_cualidades < 2 
+          AND cc.anio_anterior_puntos < 2 
+          AND cc.nota_cualidades > 0
+    """)
+    personal_en_riesgo = cur.fetchall()
+    conn.close()
+    
+    return render_template("dashboard.html", en_riesgo=personal_en_riesgo)
+
+@app.route("/mesa-calificadora/cerrar-ciclo", methods=["POST"])
+@login_requerido
+def cerrar_ciclo_anual():
+    # Verificación de seguridad: Solo Jefatura o Admin
+    if session.get('grado') != 'JEFATURA' and session.get('rol') != 'ADMIN':
+        return "Acceso denegado", 403
+    
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        # Pasamos la nota que sacaron este año a la columna de año anterior
+        cur.execute("UPDATE calificaciones_cualidades SET anio_anterior_puntos = nota_cualidades")
+        # Opcional: Podrías resetear la nota actual a 0 para empezar el nuevo año
+        # cur.execute("UPDATE calificaciones_cualidades SET nota_cualidades = 0")
+        conn.commit()
+        # Aquí podrías agregar un mensaje de éxito con flash
+    except Exception as e:
+        print(f"Error al cerrar ciclo: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+        
+    return redirect(url_for('mesa_calificadora'))
+
+@app.route("/ver-perfil/<int:legajo_id>")
+@rol_requerido('ADMIN', 'JEFATURA') # Solo vos podés hacer esto
+def ver_perfil_ajeno(legajo_id):
+    # Esta función es igual a mi_perfil, pero en vez de usar session.get('legajo')
+    # usa el legajo_id que pasás por la URL.
+    return mi_perfil_logica(legajo_id)
+
+@app.route("/departamentos/ver/<int:id>")
+@login_requerido
+def ver_miembros(id):
+    conn = get_db()
+    departamento = {}
+    miembros = []
+    
+    if conn:
+        cur = conn.cursor(dictionary=True)
+        # 1. Buscamos el nombre del departamento
+        cur.execute("SELECT * FROM departamentos WHERE id = %s", (id,))
+        departamento = cur.fetchone()
+        
+        # 2. Buscamos los miembros en la tabla real: bombero_departamento
+        cur.execute("""
+            SELECT l.apellido, l.nombre, l.grado, l.legajo
+            FROM bombero_departamento bd
+            JOIN legajos l ON bd.legajo = l.legajo
+            WHERE bd.departamento_id = %s AND bd.activo = 1
+            ORDER BY l.apellido, l.nombre
+        """, (id,))
+        miembros = cur.fetchall()
+        conn.close()
+        
+    return render_template("ver_miembros.html", depto=departamento, miembros=miembros)
 
 # ============================================================
 # MAIN

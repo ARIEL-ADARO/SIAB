@@ -57,6 +57,12 @@
                                 <h6 class="text-muted small">ESTADO ACTUAL:</h6>
                                 <h3 class="fw-bold {% if 'INSUFICIENTE' in datos.calif_letra %}text-danger{% else %}text-success{% endif %}">
                                     {{ datos.calif_letra }}
+                                    {% if datos.pilar_cualidades < 2 %}
+                                        <div class="mt-2 text-danger small">
+                                            <i class="fas fa-exclamation-circle"></i> 
+                                            Su calificación actual requiere revisión de Jefatura.
+                                        </div>
+                                    {% endif %}                                    
                                 </h3>
                                 <small class="text-muted">Actualizado según Régimen de Calificaciones</small>
                             </div>
@@ -72,7 +78,7 @@
                     new Chart(ctx, {
                         type: 'radar',
                         data: {
-                            labels: ['VOCACIÓN', 'CAP. TÉCNICA', 'CUALIDADES', 'ASISTENCIA'],
+                            labels: ['VOCACIÓN (Siniestros)', 'CAP. TÉCNICA', 'CUALIDADES', 'ASISTENCIA (Prácticas)'],
                             datasets: [{
                                 label: 'Puntos',
                                 data: [{{ datos.pilar_vocacion }}, {{ datos.pilar_capacidad }}, {{ datos.pilar_cualidades }}, {{ datos.pilar_asistencia }}],

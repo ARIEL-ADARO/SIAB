@@ -9,31 +9,35 @@
     <style>
         :root { --rojo: #a50000; --rojo-oscuro: #7a0000; }
         body { background: #f4f4f4; font-family: 'Segoe UI', sans-serif; }
-        .navbar { background: var(--rojo) !important; }
+        .navbar { background: var(--rojo) !important; border-bottom: 2px solid rgba(0,0,0,0.1); }
         .navbar-brand, .nav-link, .navbar-toggler-icon { color: white !important; }
         .nav-link:hover { color: #ffcccc !important; }
         .navbar-brand img { height: 36px; margin-right: 8px; border-radius: 4px; }
-        .sidebar { min-height: calc(100vh - 56px); background: #1a1a1a; padding-top: 1rem; }
+        .sidebar { min-height: calc(100vh - 56px); background: #1a1a1a; padding-top: 0; }
         .sidebar .nav-link { color: #ccc; padding: 0.6rem 1.2rem; border-radius: 6px; margin: 2px 8px; font-size: 0.92rem; }
         .sidebar .nav-link:hover, .sidebar .nav-link.active { background: var(--rojo); color: white !important; }
         .sidebar .nav-link i { margin-right: 8px; }
         .sidebar-section { color: #666; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; padding: 1rem 1.2rem 0.3rem; }
         .main-content { padding: 1.5rem; }
-        .card { border: none; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .card-header { background: var(--rojo); color: white; border-radius: 10px 10px 0 0 !important; font-weight: 600; }
-        .btn-primary { background: var(--rojo); border-color: var(--rojo); }
-        .btn-primary:hover { background: var(--rojo-oscuro); border-color: var(--rojo-oscuro); }
-        .tabla-asistencia th { background: #f0f0f0; font-size: 0.85rem; }
-        .tabla-asistencia td { vertical-align: middle; font-size: 0.88rem; }
-        .stat-card { border-left: 4px solid var(--rojo); }
-        .stat-numero { font-size: 2rem; font-weight: 700; color: var(--rojo); }
+        .btn-danger-llamativo { 
+            background: var(--rojo); 
+            border: 1px solid #ffffff40; 
+            font-weight: bold; 
+            box-shadow: 0 0 12px rgba(165, 0, 0, 0.5);
+            transition: all 0.3s;
+        }
+        .btn-danger-llamativo:hover { 
+            background: var(--rojo-oscuro); 
+            transform: translateY(-1px);
+            box-shadow: 0 0 18px rgba(165, 0, 0, 0.7);
+        }
         @media (max-width: 768px) { .sidebar { min-height: auto; } .main-content { padding: 1rem; } }
     </style>
     {% block estilos %}{% endblock %}
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg">
+<nav class="navbar navbar-expand-lg shadow-sm">
     <div class="container-fluid">
         <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ url_for('inicio') }}">
             {% if logo_existe %}
@@ -43,21 +47,17 @@
             {% endif %}
             SIAB
         </a>
+
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="collapse navbar-collapse" id="navMenu">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('mi_perfil') }}">
-                        <i class="bi bi-person-badge"></i> Mi Legajo
-                    </a>
-                </li>
 
+        <div class="collapse navbar-collapse" id="navMenu">
+            <ul class="navbar-nav ms-auto align-items-center">
                 {% if session.get('grado') in ['JEFATURA', 'OFICIAL', 'SUB-OFICIAL'] or session.get('rol') == 'ADMIN' %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('mesa_calificadora') }}">
-                        <i class="fas fa-gavel"></i> Mesa Calificadora
+                    <a class="nav-link px-3" href="{{ url_for('mesa_calificadora') }}">
+                        <i class="bi bi-gavel"></i> Mesa Calificadora
                     </a>
                 </li>
                 {% endif %}           
@@ -67,14 +67,14 @@
                 </li>
 
                 <li class="nav-item">
-                    <span class="nav-link">
+                    <span class="nav-link text-white">
                         <i class="bi bi-person-circle"></i> {{ session.nombre }} 
                         <span class="badge bg-light text-dark ms-1" style="font-size: 0.7rem;">{{ session.rol }}</span>
                     </span>
                 </li>
 
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('logout') }}">
+                <li class="nav-item ms-lg-2">
+                    <a class="btn btn-sm btn-outline-light border-0" href="{{ url_for('logout') }}">
                         <i class="bi bi-box-arrow-right"></i> Salir
                     </a>
                 </li>
@@ -85,49 +85,71 @@
 
 <div class="container-fluid">
     <div class="row">
-        <div class="col-lg-2 col-md-3 sidebar d-none d-md-block">
+        <div class="col-lg-2 col-md-3 sidebar d-none d-md-block shadow">
+            <div class="text-center py-4 mb-3 border-bottom bg-dark bg-opacity-25">
+                <img src="{{ url_for('static', filename='fotos/' + session.get('foto', 'default.png')) }}" 
+                    class="rounded-circle shadow-sm border border-2 border-white mb-2" 
+                    style="width: 85px; height: 85px; object-fit: cover;" 
+                    alt="Foto">
+                
+                <div class="px-3">
+                    <small class="text-danger fw-bold d-block text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">
+                        {{ session.get('grado') | default('BOMBERO', true) }}
+                    </small>
+                    <div class="fw-bold text-white mb-3" style="font-size: 0.9rem; line-height: 1.2;">
+                        {{ session.get('apellido') | default('', true) }}<br>
+                        {{ session.get('nombre') | default('', true) }}
+                    </div>
+
+                    <a href="{{ url_for('mi_perfil') }}" class="btn btn-danger btn-danger-llamativo w-100 py-2 shadow-sm text-uppercase" style="font-size: 0.7rem;">
+                        <i class="bi bi-person-badge me-1"></i> Mi Legajo Digital
+                    </a>
+                </div>
+            </div>
+
             <div class="sidebar-section">Principal</div>
             <a href="{{ url_for('inicio') }}" class="nav-link {% if request.endpoint == 'inicio' %}active{% endif %}">
                 <i class="bi bi-house"></i> Inicio
             </a>
 
             <div class="sidebar-section">Asistencia</div>
-            <a href="{{ url_for('asistencia') }}" class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}">
-                <i class="bi bi-check2-square"></i> Tomar Asistencia
-            </a>
+            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
+                <a class="nav-link {% if request.endpoint == 'tomar_asistencia' %}active{% endif %}" href="{{ url_for('tomar_asistencia') }}">
+                    <i class="bi bi-check2-square"></i> Tomar Asistencia
+                </a>
+            {% endif %}
             <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
                 <i class="bi bi-clock-history"></i> Historial
             </a>
 
             <div class="sidebar-section">Capacitación</div>
-            <a href="{{ url_for('nuevo_curso') }}" class="nav-link {% if request.endpoint == 'nuevo_curso' %}active{% endif %}">
-                <i class="bi bi-mortarboard"></i> Registrar Curso
-            </a>
+            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
+                <a href="{{ url_for('nuevo_curso') }}" class="nav-link {% if request.endpoint == 'nuevo_curso' %}active{% endif %}">
+                    <i class="bi bi-mortarboard"></i> Registrar Curso
+                </a>
+            {% endif %}
             <a href="{{ url_for('cursos') }}" class="nav-link {% if request.endpoint == 'cursos' %}active{% endif %}">
                 <i class="bi bi-journal-text"></i> Cursos
             </a>
 
             <div class="sidebar-section">Organización</div>
-            <a href="{{ url_for('departamentos') }}" class="nav-link {% if 'departamento' in request.endpoint %}active{% endif %}">
-                <i class="bi bi-diagram-3"></i> Departamentos
-            </a>
             <a href="{{ url_for('bomberos') }}" class="nav-link {% if request.endpoint == 'bomberos' %}active{% endif %}">
-                <i class="bi bi-people"></i> Bomberos
+                <i class="bi bi-people"></i> Listado Bomberos
             </a>
 
-            {% if session.rol == 'ADMIN' %}
-            <div class="sidebar-section">Configuración</div>
-            <a href="{{ url_for('config_puntos') }}" class="nav-link {% if request.endpoint == 'config_puntos' %}active{% endif %}">
-                <i class="bi bi-gear"></i> Puntos
-            </a>
+            {% if session.get('rol') == 'ADMIN' %}
+                <div class="sidebar-section">Configuración</div>
+                <a href="{{ url_for('config_puntos') }}" class="nav-link {% if request.endpoint == 'config_puntos' %}active{% endif %}">
+                    <i class="bi bi-gear"></i> Puntos
+                </a>
             {% endif %}
-        </div>
+        </div> 
 
         <div class="col-lg-10 col-md-9 main-content">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>

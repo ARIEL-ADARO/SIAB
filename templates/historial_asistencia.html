@@ -16,9 +16,12 @@
         <h4 class="mb-0 fw-bold"><i class="bi bi-clock-history"></i> Historial de Asistencia</h4>
         <small class="text-muted">Últimos 50 eventos registrados</small>
     </div>
+    {# SOLO JEFATURA PUEDE INICIAR UNA NUEVA ASISTENCIA #}
+    {% if session.rol in ['ADMIN', 'JEFATURA'] %}
     <a href="{{ url_for('asistencia') }}" class="btn btn-primary">
         <i class="bi bi-plus-lg"></i> Nueva Asistencia
     </a>
+    {% endif %}
 </div>
 
 <div class="card shadow-sm">
@@ -31,9 +34,14 @@
                         <th>Tipo</th>
                         <th>Ámbito / Depto</th>
                         <th class="d-none d-md-table-cell">Descripción</th>
+                        {# ESTADÍSTICAS SOLO PARA NIVELES ALTOS #}
+                        {% if session.rol in ['ADMIN', 'JEFATURA'] %}
                         <th class="text-success text-center">Pres.</th>
                         <th class="text-danger text-center">Aus.</th>
                         <th class="text-warning text-center">Just.</th>
+                        {% else %}
+                        <th class="text-center">Mi Estado</th>
+                        {% endif %}
                         <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
@@ -61,54 +69,78 @@
                                 </span>
                             {% endif %}
                             
-                            {# --- ESTADOS DE LA PLANILLA --- #}
                             {% if e.estado == 'ANULADO' %}
                                 <span class="badge bg-danger ms-1">ANULADO</span>
                             {% elif e.estado == 'FINALIZADO' %}
-                                <span class="badge bg-success ms-1">
-                                    <i class="bi bi-check-circle"></i> FINALIZADA
-                                </span>
+                                <span class="badge bg-success ms-1"><i class="bi bi-check-circle"></i> FINALIZADA</span>
                             {% else %}
-                                <span class="badge bg-warning text-dark ms-1">
-                                    <i class="bi bi-pencil-square"></i> BORRADOR
-                                </span>
+                                <span class="badge bg-warning text-dark ms-1"><i class="bi bi-pencil-square"></i> BORRADOR</span>
                             {% endif %}
                         </td>
                         <td class="d-none d-md-table-cell text-muted small">
                             {{ e.descripcion or '—' }}
                         </td>
-                        <td class="text-success fw-bold text-center">{{ e.presentes or 0 }}</td>
-                        <td class="text-danger fw-bold text-center">{{ e.ausentes or 0 }}</td>
-                        <td class="text-warning fw-bold text-center">{{ e.justificados or 0 }}</td>
+
+                        {# MOSTRAR TOTALES (JEFATURA) O ESTADO INDIVIDUAL (BOMBERO) #}
+                        {% if session.rol in ['ADMIN', 'JEFATURA'] %}
+                            <td class="text-success fw-bold text-center">{{ e.presentes or 0 }}</td>
+                            <td class="text-danger fw-bold text-center">{{ e.ausentes or 0 }}</td>
+                            <td class="text-warning fw-bold text-center">{{ e.justificados or 0 }}</td>
+                        {% else %}
+                            <td class="text-center">
+                                {% if e.mi_estado == 'PRESENTE' %}
+                                    <span class="badge rounded-pill bg-success">
+                                        <i class="bi bi-check-circle"></i> Presente
+                                    </span>
+                                {% elif e.mi_estado == 'AUSENTE' %}
+                                    <span class="badge rounded-pill bg-danger">
+                                        <i class="bi bi-x-circle"></i> Ausente
+                                    </span>
+                                {% elif e.mi_estado == 'JUSTIFICADO' %}
+                                    <span class="badge rounded-pill bg-warning text-dark">
+                                        <i class="bi bi-exclamation-triangle"></i> Justificado
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted small">No registrado</span>
+                                {% endif %}
+                            </td>
+                        {% endif %}
+
                         <td class="text-end">
                             <div class="btn-group">
-                                <a href="{{ url_for('detalle_asistencia', evento_id=e.id) }}"
-                                   class="btn btn-sm btn-outline-secondary" title="Ver Detalle">
-                                    <i class="bi bi-eye"></i>
-                                </a>
+                                {# SOLO JEFATURA VE DETALLES GENERALES Y DESCARGAS #}
+                                {% if session.rol in ['ADMIN', 'JEFATURA'] %}
+                                    <a href="{{ url_for('detalle_asistencia', evento_id=e.id) }}"
+                                       class="btn btn-sm btn-outline-secondary" title="Ver Detalle">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
 
-                                {% if e.tipo == 'CAPACITACION' and e.estado != 'ANULADO' %}
-                                <a href="{{ url_for('cargar_notas', evento_id=e.id) }}" 
-                                   class="btn btn-sm btn-info text-white" title="Cargar Calificaciones">
-                                    <i class="bi bi-pencil-square"></i>
-                                </a>
-                                {% endif %}
+                                    {% if e.tipo == 'CAPACITACION' and e.estado != 'ANULADO' %}
+                                    <a href="{{ url_for('cargar_notas', evento_id=e.id) }}" 
+                                       class="btn btn-sm btn-info text-white" title="Cargar Calificaciones">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </a>
+                                    {% endif %}
 
-                                <div class="btn-group">
-                                    <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
-                                        <i class="bi bi-download"></i>
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                                            <i class="bi bi-download"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='excel') }}">Excel (.xlsx)</a></li>
+                                            <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='pdf') }}">PDF (.pdf)</a></li>
+                                        </ul>
+                                    </div>
+
+                                    {% if e.estado != 'ANULADO' %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                                            onclick="confirmarAnulacion({{ e.id }})" title="Anular">
+                                        <i class="bi bi-slash-circle"></i>
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-end">
-                                        <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='excel') }}">Excel (.xlsx)</a></li>
-                                        <li><a class="dropdown-item" href="{{ url_for('exportar_asistencia', evento_id=e.id, formato='pdf') }}">PDF (.pdf)</a></li>
-                                    </ul>
-                                </div>
-
-                                {% if e.estado != 'ANULADO' %}
-                                <button type="button" class="btn btn-sm btn-outline-danger" 
-                                        onclick="confirmarAnulacion({{ e.id }})" title="Anular">
-                                    <i class="bi bi-slash-circle"></i>
-                                </button>
+                                    {% endif %}
+                                {% else %}
+                                    {# VISTA PARA EL BOMBERO COMÚN #}
+                                    <span class="text-muted small pe-2">Sin acciones</span>
                                 {% endif %}
                             </div>
                         </td>
@@ -119,23 +151,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-function confirmarAnulacion(id) {
-    if (confirm("¿Estás seguro de que deseas ANULAR esta asistencia?\n\nEl registro se mantendrá en el historial pero dejará de contar para estadísticas.")) {
-        fetch(`/asistencia/anular/${id}`, { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.ok) {
-                location.reload();
-            } else {
-                alert("Error al anular: " + data.error);
-            }
-        })
-        .catch(err => alert("Error de conexión"));
-    }
-}
-</script>
 {% endblock %}

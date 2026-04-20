@@ -4,6 +4,20 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h3>Mesa Calificadora: Cualidades Personales</h3>
+            <div class="container mt-4">
+                <div class="d-flex justify-content-between">
+                    <h3>Mesa Calificadora</h3>
+                        {% if session.get('grado') == 'JEFATURA' or session.get('rol') == 'ADMIN' %}
+                        <div class="d-flex justify-content-end mb-3">
+                            <form action="{{ url_for('cerrar_ciclo_anual') }}" method="POST" 
+                                onsubmit="return confirm('¿Está seguro? Esto sobreescribirá las notas del año anterior con las actuales para todo el personal.');">
+                                <button type="submit" class="btn btn-warning btn-sm">
+                                    <i class="fas fa-history"></i> Cerrar Ciclo Anual (Pasar notas al historial)
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                
             <p class="text-muted mb-0">Gestión de desempeño y permanencia institucional.</p>
         </div>
         <div class="badge bg-info text-dark p-2">
