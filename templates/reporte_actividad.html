@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte de Actividad Operativa{% endblock %}
+
+{% block contenido %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="fas fa-chart-line text-primary"></i> Reporte de Actividad Operativa</h2>
+            <p class="text-muted">Resumen de asistencias y promedios de capacitación por legajo.</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <button onclick="window.print()" class="btn btn-outline-secondary">
+                <i class="fas fa-print"></i> Imprimir Reporte
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('reporte_actividad') }}" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="desde" class="form-control" value="{{ desde }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="hasta" class="form-control" value="{{ hasta }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-filter"></i> Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Legajo</th>
+                            <th>Apellido y Nombre</th>
+                            <th>Grado</th>
+                            <th class="text-center">Total Asistencias</th>
+                            <th class="text-center">Promedio Capacitación</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in reporte %}
+                        <tr>
+                            <td><strong>{{ item.legajo }}</strong></td>
+                            <td>{{ item.nombre }}</td>
+                            <td><span class="badge bg-secondary">{{ item.grado }}</span></td>
+                            <td class="text-center">
+                                <span class="badge rounded-pill bg-info text-dark">
+                                    {{ item.asistencias }} eventos
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <div class="fw-bold {% if item.promedio >= 7 %}text-success{% elif item.promedio >= 4 %}text-warning{% else %}text-danger{% endif %}">
+                                    {{ item.promedio }}
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('ver_perfil_ajeno', legajo_id=item.legajo) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i> Ver Detalle
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                No se encontraron registros para el período seleccionado.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

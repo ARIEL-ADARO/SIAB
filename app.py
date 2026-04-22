@@ -10,6 +10,9 @@ from mysql.connector import Error
 from datetime import datetime
 import hashlib
 import os
+import hashlib
+import hmac
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "siab_bomberos_2026_secretkey"
@@ -38,9 +41,6 @@ def get_db():
 # HELPERS
 # ============================================================
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
 def login_requerido(f):
     from functools import wraps
     @wraps(f)
@@ -62,6 +62,21 @@ def rol_requerido(*roles):
             return f(*args, **kwargs)
         return decorated
     return decorator
+
+# Función ÚNICA para verificar las claves del escritorio
+def verificar_password_siab(password_ingresada, hash_almacenado):
+    import hashlib
+    import hmac
+    try:
+        if ':' not in hash_almacenado:
+            return False
+        salt_hex, dk_hex = hash_almacenado.split(':')
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(dk_hex)
+        derived = hashlib.pbkdf2_hmac('sha256', password_ingresada.encode('utf-8'), salt, 100000)
+        return hmac.compare_digest(derived, expected)
+    except Exception:
+        return False
 
 # ============================================================
 # LOGIN / LOGOUT
@@ -91,7 +106,20 @@ def login():
         usuario = cur.fetchone()
         conn.close()
 
-        if usuario and usuario["password_hash"] == hash_password(password):
+        # --- LÓGICA DE VALIDACIÓN CORREGIDA ---
+        es_valido = False
+        if usuario:
+            hash_db = usuario["password_hash"]
+            # Intento 1: ¿Es el formato del escritorio (con :)?
+            if ":" in hash_db:
+                es_valido = verificar_password_siab(password, hash_db)
+            # Intento 2: ¿Es el formato del ADMIN (SHA256 simple)?
+            else:
+                import hashlib
+                hash_intento = hashlib.sha256(password.encode()).hexdigest()
+                es_valido = (hash_db == hash_intento)
+
+        if es_valido:
             apellido = usuario.get("apellido") or ""
             nombre   = usuario.get("nombre") or ""
             nombre_completo = f"{apellido} {nombre}".strip() or username
@@ -101,10 +129,7 @@ def login():
             session["rol"]        = usuario["rol"]
             session["legajo"]     = usuario["legajo"]
             session["nombre"]     = nombre_completo
-            
-            # --- AGREGA ESTA LÍNEA PARA ELIMINAR EL 'NONE' ---
             session["grado"]      = usuario.get("grado") or "BOMBERO" 
-            # -------------------------------------------------
 
             flash(f"Bienvenido, {nombre_completo}!", "success")
             return redirect(url_for("inicio"))
@@ -112,7 +137,6 @@ def login():
             flash("Usuario o contraseña incorrectos.", "danger")
 
     return render_template("login.html")
-
 
 @app.route("/logout")
 def logout():
@@ -213,12 +237,12 @@ def get_bomberos():
 
 @app.route("/asistencia", methods=["GET", "POST"])
 @login_requerido
-@rol_requerido('ADMIN', 'JEFATURA') # <--- Esto es lo que lo rebota si intenta entrar
+@rol_requerido('ADMIN', 'JEFATURA')
 def asistencia():
     conn = get_db()
     conceptos     = []
     departamentos = []
-    bomberos      = []  # <--- Agregamos esta lista
+    bomberos      = []
     config_puntos = None
     
     if conn:
@@ -230,7 +254,7 @@ def asistencia():
         cur.execute("SELECT id, nombre FROM departamentos WHERE activo = 1 ORDER BY nombre")
         departamentos = cur.fetchall()
         
-        # 2. TRAER LOS 5 BOMBEROS PARA LA PRUEBA
+        # 2. TRAER LOS BOMBEROS (Limitado a 5 para prueba o todos según necesites)
         cur.execute("""
             SELECT legajo, apellido, nombre, grado 
             FROM legajos 
@@ -238,7 +262,7 @@ def asistencia():
             ORDER BY apellido, nombre 
             LIMIT 5
         """)
-        bomberos = cur.fetchall() # <--- Guardamos los 5 bomberos
+        bomberos = cur.fetchall()
         
         # 3. Traer config de puntos
         cur.execute("SELECT puntos_por_asistencia FROM config_puntos WHERE anio = YEAR(CURDATE()) LIMIT 1")
@@ -246,12 +270,18 @@ def asistencia():
         
         conn.close()
 
-    # IMPORTANTE: Agregamos 'bomberos' al render_template
+    # Agregamos 'evento=None' para que la plantilla no de error de "Undefined"
+    # También agregamos 'asistencias_previas' y 'postas_previas' como vacíos
+    # para que el JavaScript de la plantilla funcione correctamente.
     return render_template("asistencia.html",
+                           evento=None,
                            conceptos=conceptos,
                            departamentos=departamentos,
-                           bomberos=bomberos,  # <--- Lo pasamos a la plantilla
-                           config_puntos=config_puntos)
+                           bomberos=bomberos,
+                           config_puntos=config_puntos,
+                           hoy=datetime.now().strftime('%Y-%m-%d'),
+                           asistencias_previas={},
+                           postas_previas=[])
 
 @app.route("/asistencia/guardar", methods=["POST"])
 @login_requerido
@@ -649,10 +679,13 @@ def departamentos():
     return render_template("departamentos.html", departamentos=lista)
 
 
-@app.route("/departamentos/<int:depto_id>/miembros")
+@app.route("/departamentos/gestionar/<int:depto_id>")
 @login_requerido
-@rol_requerido('ADMIN', 'JEFATURA') # <--- Bloqueo para bomberos
 def miembros_departamento(depto_id):
+    # RESTRICCIÓN CRÍTICA:
+    if session.get('rol') != 'ADMIN':
+        flash("Acceso denegado: Solo el Administrador puede asignar personal.", "danger")
+        return redirect(url_for('departamentos'))
     conn = get_db()
     depto = None
     miembros = []
@@ -1046,136 +1079,91 @@ def reporte_actividad():
                            desde=fecha_desde, 
                            hasta=fecha_hasta)
 
-# ============================================================
-# PERFIL PERSONAL - MI LEGAJO (CON CÁLCULO DE PILARES)
-# ============================================================
+def obtener_datos_completos_perfil(legajo):
+    conn = get_db()
+    
+    # Perfil por defecto (esto es lo que verá el ADMIN si no está en la tabla legajos)
+    datos = {
+        'legajo': legajo,
+        'apellido': 'ADMINISTRADOR',
+        'nombre': 'SISTEMA',
+        'grado': 'SOPORTE',
+        'cargo': 'ADMIN',
+        'dni': '0',
+        'situacion': 'ACTIVO',
+        'email': 'admin@sistema.com',
+        'nro_cel': 'N/A',
+        'asistencias_anio': 0,
+        'promedio_general': 0.0,
+        'pilar_vocacion': 5.0,
+        'pilar_capacidad': 5.0,
+        'pilar_asistencia': 5.0,
+        'pilar_cualidades': 5.0,
+        'puntaje_final': 5.0,
+        'calif_letra': "EXCELENTE"
+    }
+    historial = []
+
+    if not conn:
+        return datos, [] # Devolvemos el perfil genérico en lugar de None
+
+    try:
+        cur = conn.cursor(dictionary=True)
+        
+        # 1. Buscamos datos básicos (Nombre, Apellido, Grado)
+        cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
+        perfil_base = cur.fetchone()
+        
+        if perfil_base:
+            datos.update(perfil_base)
+        else:
+            print(f"Aviso: El legajo {legajo} no está en la tabla de personal. Usando perfil genérico.")
+
+        # 2. Historial Real (Desde la tabla 'actividades' del programa local)
+        # Adaptamos las columnas de 'actividades' para que el HTML las entienda
+        cur.execute("""
+            SELECT 
+                fecha_inicio AS fecha, 
+                actividad AS tipo, 
+                descripcion, 
+                estado AS asistencia_estado,
+                'FINALIZADO' AS evento_status, 
+                0 AS calificacion
+            FROM actividades 
+            WHERE legajo = %s AND anulada = 0
+            ORDER BY fecha_inicio DESC, hora_inicio DESC 
+            LIMIT 20
+        """, (legajo,))
+        historial = cur.fetchall()
+
+        # 3. Promedio (Opcional: Si no usas notas en 'actividades', lo dejamos en 0 o lo calculas de otra tabla)
+        # Por ahora lo dejamos como está en el diccionario 'datos' para no ensuciar.
+
+        return datos, historial
+
+    except Exception as e:
+        print(f"ERROR EN PERFIL/ACTIVIDADES: {e}")
+        return datos, [] 
+    finally:
+        conn.close()
+
+@app.route("/ver-perfil/<int:legajo_id>")
+@rol_requerido('ADMIN', 'JEFATURA')
+def ver_perfil_ajeno(legajo_id):
+    datos, historial = obtener_datos_completos_perfil(legajo_id)
+    if not datos:
+        flash("No se encontró el legajo.", "warning")
+        return redirect(url_for('inicio'))
+    return render_template("mi_perfil.html", datos=datos, historial=historial)
 
 @app.route("/mi-perfil")
 @login_requerido
 def mi_perfil():
     legajo = session.get("legajo")
-    conn = get_db()
-    datos = {}
-    historial = []
-    
-    if conn:
-        cur = conn.cursor(dictionary=True)
-        
-        # 1. Datos básicos y situación actual
-        cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
-        datos = cur.fetchone()
-        
-        # 2. Estadísticas anuales
-        cur.execute("""
-            SELECT COUNT(*) as total 
-            FROM asistencia a
-            JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s 
-              AND a.estado = 'PRESENTE'
-              AND YEAR(e.fecha) = YEAR(CURDATE())
-              AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
-        """, (legajo,))
-        datos['asistencias_anio'] = cur.fetchone()['total']
-        
-        # 3. Promedio de capacitación
-        cur.execute("""
-            SELECT AVG(ant.nota) as promedio
-            FROM asistencia_notas_temas ant
-            JOIN eventos e ON ant.evento_id = e.id
-            WHERE ant.legajo = %s
-              AND e.estado != 'ANULADO'
-        """, (legajo,))
-        res_promedio = cur.fetchone()['promedio']
-        datos['promedio_general'] = round(res_promedio, 2) if res_promedio else 0.0
-
-        # --- INICIO CÁLCULO DE LOS 4 PILARES (RÉGIMEN ALMAFUERTE) ---
-
-        # PILAR 1: VOCACIÓN (Basado en Siniestros: Incendio, Rescate, Auxilio)
-        cur.execute("""
-            SELECT COUNT(*) as cant FROM asistencia a JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s AND a.estado = 'PRESENTE'
-            AND e.tipo IN ('INCENDIO', 'RESCATE', 'AUXILIO') 
-            AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
-        """, (legajo,))
-        siniestros_bombero = cur.fetchone()['cant']
-        
-        # Máximo de siniestros del cuartel para fijar el 100% (5 pts)
-        cur.execute("""
-            SELECT COUNT(*) as max_c 
-            FROM asistencia a JOIN eventos e ON a.evento_id = e.id 
-            WHERE a.estado='PRESENTE' AND e.tipo IN ('INCENDIO','RESCATE','AUXILIO') 
-            GROUP BY a.legajo ORDER BY max_c DESC LIMIT 1
-        """)
-        res_max_s = cur.fetchone()
-        max_s = res_max_s['max_c'] if (res_max_s and res_max_s['max_c'] > 0) else 1
-        
-        datos['pilar_vocacion'] = round((siniestros_bombero * 5) / max_s, 2)
-
-        # PILAR 2: CAPACIDAD TÉCNICA (Promedio de exámenes 0-10 pasado a 0-5)
-        # Usamos el promedio general que calculaste arriba
-        datos['pilar_capacidad'] = round(datos['promedio_general'] / 2, 2)
-
-        # PILAR 3: ASISTENCIA (Prácticas, Instrucciones y Reuniones)
-        cur.execute("""
-            SELECT 
-                COUNT(e.id) as total_obligatorios,
-                SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as mis_presencias
-            FROM eventos e
-            LEFT JOIN asistencia a ON e.id = a.evento_id AND a.legajo = %s
-            WHERE e.tipo IN ('PRACTICA', 'INSTRUCCION', 'REUNION')
-              AND e.estado IN ('CONFIRMADO', 'FINALIZADO')
-        """, (legajo,))
-        res_asis = cur.fetchone()
-        
-        total_ev = res_asis['total_obligatorios'] or 0
-        mis_pres = res_asis['mis_presencias'] or 0
-        porc_asis = (mis_pres / total_ev * 100) if total_ev > 0 else 0
-        
-        # Escala institucional Almafuerte para Asistencia
-        if porc_asis >= 80: datos['pilar_asistencia'] = 5.0
-        elif porc_asis >= 70: datos['pilar_asistencia'] = 4.0
-        elif porc_asis >= 60: datos['pilar_asistencia'] = 3.0
-        else: datos['pilar_asistencia'] = 1.0
-
-        # PILAR 4: CUALIDADES (Carga real de la mesa calificadora)
-        cur.execute("SELECT nota_cualidades FROM calificaciones_cualidades WHERE legajo = %s", (legajo,))
-        res_c = cur.fetchone()
-        datos['pilar_cualidades'] = float(res_c['nota_cualidades']) if res_c else 0.0
-
-        # --- CÁLCULO FINAL (CORREGIDO) ---
-        # Usamos float() en cada pilar para evitar el choque con los tipos Decimal de la DB
-        suma_total = (
-            float(datos['pilar_vocacion']) + 
-            float(datos['pilar_capacidad']) + 
-            float(datos['pilar_asistencia']) + 
-            float(datos['pilar_cualidades'])
-        )
-        
-        nota_final = round(suma_total / 4, 2) 
-        datos['puntaje_final'] = nota_final
-        
-        # Clasificación por Letra (Escala 0 a 5)
-        if nota_final >= 4.50: datos['calif_letra'] = "SOBRESALIENTE (S)"
-        elif nota_final >= 4.00: datos['calif_letra'] = "MUY BUENO (MB)"
-        elif nota_final >= 3.00: datos['calif_letra'] = "BUENO (B)"
-        elif nota_final >= 2.00: datos['calif_letra'] = "REGULAR (R)"
-        else: datos['calif_letra'] = "INSUFICIENTE (I)"
-
-        # --- FIN CÁLCULO DE PILARES ---
-
-        # 4. Historial
-        cur.execute("""
-            SELECT e.fecha, e.tipo, e.descripcion, a.estado as asistencia_estado, 
-                   e.estado as evento_status, a.calificacion
-            FROM asistencia a
-            JOIN eventos e ON a.evento_id = e.id
-            WHERE a.legajo = %s AND e.estado != 'ANULADO'
-            ORDER BY e.fecha DESC LIMIT 15
-        """, (legajo,))
-        historial = cur.fetchall()
-        
-        conn.close()
-
+    datos, historial = obtener_datos_completos_perfil(legajo)
+    if not datos:
+        flash("Error al cargar tu perfil.", "danger")
+        return redirect(url_for('inicio'))
     return render_template("mi_perfil.html", datos=datos, historial=historial)
 
 @app.route("/mesa-calificadora")
@@ -1284,13 +1272,6 @@ def cerrar_ciclo_anual():
         
     return redirect(url_for('mesa_calificadora'))
 
-@app.route("/ver-perfil/<int:legajo_id>")
-@rol_requerido('ADMIN', 'JEFATURA') # Solo vos podés hacer esto
-def ver_perfil_ajeno(legajo_id):
-    # Esta función es igual a mi_perfil, pero en vez de usar session.get('legajo')
-    # usa el legajo_id que pasás por la URL.
-    return mi_perfil_logica(legajo_id)
-
 @app.route("/departamentos/ver/<int:id>")
 @login_requerido
 def ver_miembros(id):
@@ -1316,6 +1297,150 @@ def ver_miembros(id):
         conn.close()
         
     return render_template("ver_miembros.html", depto=departamento, miembros=miembros)
+
+import os
+import subprocess
+from datetime import datetime
+from flask import flash, redirect, url_for
+
+@app.route('/actividades')
+@login_requerido
+def listado_actividades():
+    try:
+        conn = get_db()
+        actividades = []
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            # Corregimos 'c.conceptos' a 'c.concepto'
+            query = """
+                SELECT 
+                    e.id, 
+                    e.fecha as fecha_inicio, 
+                    e.tipo, 
+                    e.descripcion, 
+                    c.concepto as concepto_nombre,
+                    5 as asignado 
+                FROM eventos e 
+                LEFT JOIN conceptos c ON e.concepto_id = c.id 
+                WHERE e.estado = 'FINALIZADO'
+                ORDER BY e.fecha DESC
+            """
+            cursor.execute(query)
+            actividades = cursor.fetchall()
+            
+            print(f"DEBUG: Filas encontradas: {len(actividades)}")
+            
+            cursor.close()
+            conn.close()
+        
+        return render_template('actividades.html', actividades=actividades)
+
+    except Exception as e:
+        # Esto te ayuda a ver el error real en la consola de Python
+        print(f"Error en actividades: {e}")
+        return f"Error detectado: {e}"
+
+@app.route('/actividades/nueva', methods=['GET', 'POST'])
+def nueva_actividad():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    if request.method == 'POST':
+        concepto_id = request.form['concepto_id']
+        fecha = request.form['fecha']
+        descripcion = request.form['descripcion']
+        puntos = request.form['puntos']
+        
+        cursor.execute("""
+            INSERT INTO actividades (concepto_id, fecha, descripcion, puntos) 
+            VALUES (%s, %s, %s, %s)
+        """, (concepto_id, fecha, descripcion, puntos))
+        
+        conn.commit()
+        flash("Actividad registrada con éxito", "success")
+        return redirect(url_for('listado_actividades'))
+
+    # Para el GET: cargamos los conceptos para el desplegable
+    cursor.execute("SELECT id, nombre FROM conceptos ORDER BY nombre")
+    conceptos = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('nueva_actividad.html', conceptos=conceptos)
+
+@app.route("/mis-actividades")
+@login_requerido
+def mis_actividades():
+    conn = get_db()
+    lista_actividades = []
+    
+    if conn:
+        cur = conn.cursor(dictionary=True)
+        # Traemos las filas de la tabla asistencia que coinciden con el legajo del usuario logueado
+        cur.execute("""
+            SELECT a.id, e.fecha as fecha_inicio, c.concepto as concepto_nombre, a.calificacion as asignado
+            FROM asistencia a
+            JOIN eventos e ON a.evento_id = e.id
+            LEFT JOIN conceptos c ON e.concepto_id = c.id
+            WHERE a.legajo = %s
+            ORDER BY e.fecha DESC
+        """, (session.get('legajo'),))
+        lista_actividades = cur.fetchall()
+        conn.close()
+    
+    # Aquí es donde le "pasamos" la lista a la plantilla
+    return render_template("actividades.html", actividades=lista_actividades)
+
+@app.route('/admin/backup')
+def ejecutar_backup():
+    if session.get('rol') != 'ADMIN':
+        return redirect(url_for('inicio'))
+
+    try:
+        db_user = DB_CONFIG['user']
+        db_pass = DB_CONFIG['password']
+        db_name = DB_CONFIG['database']
+        
+        folder = r"C:\SIAB\backups"
+        if not os.path.exists(folder): os.makedirs(folder)
+
+        fecha = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        filename = f"backup_{db_name}_{fecha}.sql"
+        filepath = os.path.join(folder, filename)
+
+        # --- BUSCADOR DEL EJECUTABLE ---
+        posibles_rutas = [
+            r"C:\xampp\mysql\bin\mysqldump.exe",
+            r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe",
+            r"C:\Program Files\MySQL\MySQL Server 8.1\bin\mysqldump.exe",
+            "mysqldump" # Si está en el PATH
+        ]
+        
+        dump_exe = None
+        for ruta in posibles_rutas:
+            if ruta == "mysqldump" or os.path.exists(ruta):
+                dump_exe = ruta
+                break
+
+        if not dump_exe:
+            flash("No se encontró mysqldump.exe. Verificá la instalación de MySQL/XAMPP.", "danger")
+            return redirect(url_for('inicio'))
+        # -------------------------------
+
+        comando = [dump_exe, f"--user={db_user}", f"--password={db_pass}", db_name]
+
+        with open(filepath, "w") as out_file:
+            resultado = subprocess.run(comando, stdout=out_file, stderr=subprocess.PIPE, text=True)
+
+        if resultado.returncode != 0:
+            if os.path.exists(filepath): os.remove(filepath)
+            flash(f"Error de MySQL: {resultado.stderr}", "danger")
+        else:
+            flash(f"¡Respaldo exitoso! Guardado en {folder}", "success")
+
+    except Exception as e:
+        flash(f"Error crítico: {str(e)}", "danger")
+    
+    return redirect(url_for('inicio'))
 
 # ============================================================
 # MAIN

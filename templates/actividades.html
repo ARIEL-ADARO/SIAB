@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block titulo %}Listado de Actividades{% endblock %}
+
+{% block contenido %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-calendar-event me-2"></i>Mis Actividades y Puntos</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Total de filas encontradas: {{ actividades|length }}</p>
+            
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Fecha</th>
+                            <th>Concepto</th>
+                            <th class="text-center">Puntos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for act in actividades %}
+                        <tr>
+                            <td><span class="badge bg-secondary">{{ act.id }}</span></td>
+                            <td>{{ act.fecha_inicio }}</td>
+                            <td>{{ act.concepto_nombre }}</td>
+                            <td class="text-center fw-bold text-danger">{{ act.asignado }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-muted">
+                                <i class="bi bi-info-circle me-2"></i> No se encontraron actividades registradas para tu legajo.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

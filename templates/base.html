@@ -6,6 +6,7 @@
     <title>SIAB - {% block titulo %}{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root { --rojo: #a50000; --rojo-oscuro: #7a0000; }
         body { background: #f4f4f4; font-family: 'Segoe UI', sans-serif; }
@@ -114,7 +115,7 @@
 
             <div class="sidebar-section">Asistencia</div>
             {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
-                <a class="nav-link {% if request.endpoint == 'tomar_asistencia' %}active{% endif %}" href="{{ url_for('tomar_asistencia') }}">
+                <a class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}" href="{{ url_for('asistencia') }}">
                     <i class="bi bi-check2-square"></i> Tomar Asistencia
                 </a>
             {% endif %}
@@ -133,17 +134,38 @@
             </a>
 
             <div class="sidebar-section">Organización</div>
+            <a href="{{ url_for('departamentos') }}" class="nav-link {% if request.endpoint == 'departamentos' %}active{% endif %}">
+                <i class="bi bi-diagram-3"></i> Departamentos
+            </a>
+
+            <a href="{{ url_for('listado_actividades') }}" class="nav-link {% if request.endpoint == 'listado_actividades' %}active{% endif %}">
+                <i class="bi bi-calendar-event"></i> Actividades
+            </a>            
+
             <a href="{{ url_for('bomberos') }}" class="nav-link {% if request.endpoint == 'bomberos' %}active{% endif %}">
                 <i class="bi bi-people"></i> Listado Bomberos
             </a>
 
+            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
+            <a href="{{ url_for('reporte_actividad') }}" class="nav-link {% if request.endpoint == 'reporte_actividad' %}active{% endif %} text-info">
+                <i class="bi bi-bar-chart-line"></i> Reporte Rendimiento
+            </a>
+            {% endif %}
+
             {% if session.get('rol') == 'ADMIN' %}
                 <div class="sidebar-section">Configuración</div>
+                
                 <a href="{{ url_for('config_puntos') }}" class="nav-link {% if request.endpoint == 'config_puntos' %}active{% endif %}">
                     <i class="bi bi-gear"></i> Puntos
                 </a>
+
+                <a href="{{ url_for('ejecutar_backup') }}" 
+                   class="nav-link text-warning fw-bold" 
+                   onclick="return confirm('¿Desea generar una copia de seguridad de la base de datos SQL ahora?')">
+                    <i class="bi bi-database-down"></i> Generar Respaldo
+                </a>
             {% endif %}
-        </div> 
+        </div>
 
         <div class="col-lg-10 col-md-9 main-content">
             {% with messages = get_flashed_messages(with_categories=true) %}
