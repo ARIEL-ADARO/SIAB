@@ -23,26 +23,60 @@
         </div>
 
         <div class="col-md-8">
-            <div class="row text-center">
-                <div class="col-6 col-md-4 mb-3">
-                    <div class="card bg-primary text-white shadow-sm">
-                        <div class="card-body">
-                            <h6>Asistencias Anuales</h6>
-                            <h2 class="display-6">{{ datos.asistencias_anio if datos.asistencias_anio else '0' }}</h2>
+            
+            <div class="row g-3 mb-4 text-center">
+                <div class="col-md-3">
+                    <div class="card h-100 border-0 shadow-sm bg-gradient text-white" style="background: linear-gradient(45deg, #1a2a6c, #b21f1f);">
+                        <div class="card-body p-2">
+                            <h6 class="text-uppercase small opacity-75 mt-2">Clases Oblig.</h6>
+                            <h2 class="fw-bold mb-0">{{ datos.puntos_capacitacion }}</h2>
+                            <p class="mb-0 small">PUNTOS</p>
+                            <hr class="my-2 opacity-25">
+                            <small class="d-block pb-2">{{ datos.clases_conteo }} de 2 clases</small>
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-4 mb-3">
-                    <div class="card bg-success text-white shadow-sm">
-                        <div class="card-body">
-                            <h6>Promedio Instr.</h6>
-                            <h2 class="display-6">{{ datos.promedio_general }}</h2>
+
+                <div class="col-md-3">
+                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-info">
+                        <div class="card-body p-2">
+                            <h6 class="text-uppercase text-muted small mt-2">Actividades</h6>
+                            <h2 class="fw-bold text-dark mb-0">{{ datos.horas_actividad_reales }}</h2>
+                            <p class="mb-0 small text-muted">HORAS</p>
+                            <hr class="my-2">
+                            <span class="badge rounded-pill bg-info text-dark">{{ datos.puntos_actividad }} / 5.0 pts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-danger">
+                        <div class="card-body p-2">
+                            <h6 class="text-uppercase text-muted small mt-2">Siniestros</h6>
+                            <h2 class="fw-bold text-danger mb-0">{{ datos.total_salidas }}</h2>
+                            <p class="mb-0 small text-muted">SALIDAS</p>
+                            <hr class="my-2">
+                            <small class="text-danger fw-bold">Puntos: {{ datos.puntos_operativo }}</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card h-100 border-0 shadow-sm {{ 'bg-warning-subtle border-start border-4 border-warning' if datos.pendientes_firma_bombero > 0 else 'bg-success-subtle border-start border-4 border-success' }}">
+                        <div class="card-body p-2">
+                            <h6 class="text-uppercase text-muted small mt-2">Firmas</h6>
+                            <h2 class="fw-bold {{ 'text-warning' if datos.pendientes_firma_bombero > 0 else 'text-success' }} mb-0">
+                                {{ datos.pendientes_firma_bombero }}
+                            </h2>
+                            <p class="mb-0 small text-muted">BORRADORES</p>
+                            <hr class="my-2">
+                            <small class="fw-bold text-truncate">{{ 'Acción requerida' if datos.pendientes_firma_bombero > 0 else 'Al día' }}</small>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-3">
+            <div class="card shadow-sm mb-4">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Mi Calificación Institucional</h5>
                     <span class="badge bg-warning text-dark">Promedio Final: {{ datos.puntaje_final }} / 5</span>
@@ -50,97 +84,69 @@
                 <div class="card-body">
                     <div class="row align-items-center">
                         <div class="col-md-5 text-center">
-                            <canvas id="graficoPilares" style="max-height: 200px;"></canvas>
+                            <canvas id="graficoPilares" style="max-height: 220px;"></canvas>
                         </div>
                         <div class="col-md-7">
                             <div class="p-3 border rounded bg-light text-center">
-                                <h6 class="text-muted small">ESTADO ACTUAL:</h6>
+                                <h6 class="text-muted small text-uppercase">Estado de Legajo:</h6>
                                 <h3 class="fw-bold {% if 'INSUFICIENTE' in datos.calif_letra %}text-danger{% else %}text-success{% endif %}">
                                     {{ datos.calif_letra }}
-                                    {% if datos.pilar_cualidades < 2 %}
-                                        <div class="mt-2 text-danger small">
-                                            <i class="fas fa-exclamation-circle"></i> 
-                                            Su calificación actual requiere revisión de Jefatura.
-                                        </div>
-                                    {% endif %}                                    
                                 </h3>
-                                <small class="text-muted">Actualizado según Régimen de Calificaciones</small>
+                                <div class="d-grid gap-2 mt-3">
+                                    <a href="{{ url_for('mis_capacitaciones') }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-certificate"></i> Ver Capacitaciones
+                                    </a>
+                                    
+                                    <a href="{{ url_for('mis_actividades_gestion') }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-tools"></i> Ver Mis Actividades
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    const ctx = document.getElementById('graficoPilares').getContext('2d');
-                    new Chart(ctx, {
-                        type: 'radar',
-                        data: {
-                            labels: ['VOCACIÓN (Siniestros)', 'CAP. TÉCNICA', 'CUALIDADES', 'ASISTENCIA (Prácticas)'],
-                            datasets: [{
-                                label: 'Puntos',
-                                data: [{{ datos.pilar_vocacion }}, {{ datos.pilar_capacidad }}, {{ datos.pilar_cualidades }}, {{ datos.pilar_asistencia }}],
-                                backgroundColor: 'rgba(220, 53, 69, 0.2)',
-                                borderColor: 'rgba(220, 53, 69, 1)',
-                                pointBackgroundColor: 'rgba(220, 53, 69, 1)'
-                            }]
-                        },
-                        options: { scales: { r: { suggestedMin: 0, suggestedMax: 5 } }, plugins: { legend: { display: false } } }
-                    });
-                });
-            </script>
-
-            <div class="card shadow-sm mt-2">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">Mi Actividad Reciente</h5>
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0">Últimos Registros</h6>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Fecha</th>
-                                <th>Evento</th>
-                                <th>Estado</th>
-                                <th>Nota</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for h in historial %}
-                            <tr>
-                                <td>{{ h.fecha.strftime('%d/%m/%Y') if h.fecha else '' }}</td>
-                                <td>
-                                    <small class="badge bg-light text-dark border">{{ h.tipo }}</small><br>
-                                    {{ h.descripcion }}
-                                </td>
-                                <td>
-                                    {% if h.asistencia_estado == 'PRESENTE' %}
-                                        <span class="badge bg-success">PRESENTE</span>
-                                    {% elif h.asistencia_estado == 'AUSENTE' %}
-                                        <span class="badge bg-danger">INJUSTIFICADA</span>
-                                    {% elif h.asistencia_estado == 'JUSTIFICADO' %}
-                                        <span class="badge bg-warning text-dark">JUSTIFICADA</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">{{ h.asistencia_estado }}</span>
-                                    {% endif %}
-
-                                    {% if h.evento_status == 'BORRADOR' %}
-                                        <br><small class="text-muted italic">(Borrador)</small>
-                                    {% endif %}
-                                </td>
-                                <td class="fw-bold text-primary">{{ h.calificacion or '-' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center py-3 text-muted">No hay actividad registrada en el historial.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <table class="table table-sm table-hover mb-0">
+                        </table>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('graficoPilares').getContext('2d');
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Capacitación', 'Actividades', 'Cualidades', 'Operativo'],
+                datasets: [{
+                    label: 'Puntos',
+                    data: [
+                        {{ datos.puntos_capacitacion or 0 }}, 
+                        {{ datos.puntos_actividad or 0 }}, 
+                        {{ datos.pilar_cualidades or 0 }}, 
+                        {{ datos.puntos_operativo or 0 }}
+                    ],
+                    backgroundColor: 'rgba(26, 42, 108, 0.2)',
+                    borderColor: 'rgba(26, 42, 108, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(178, 31, 31, 1)'
+                }]
+            },
+            options: { 
+                scales: { r: { suggestedMin: 0, suggestedMax: 5, ticks: { stepSize: 1 } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    });
+</script>
 {% endblock %}

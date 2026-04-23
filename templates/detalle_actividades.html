@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-history me-2"></i>{{ titulo }}</h2>
+        <a href="{{ url_for('mi_perfil') }}" class="btn btn-secondary">Volver al Legajo</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Actividad</th>
+                        <th>Descripción</th>
+                        <th>Horas</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# Inicializamos el acumulador #}
+                    {% set total_acumulado = namespace(horas=0) %}
+                    
+                    {% for r in registros %}
+                        {# Sumamos las horas al acumulador #}
+                        {% if r.horas %}
+                            {% set total_acumulado.horas = total_acumulado.horas + r.horas|float %}
+                        {% endif %}
+                        
+                        <tr>
+                            <td>
+                                {% if r.fecha %}
+                                    {% if r.fecha is string %}{{ r.fecha }}{% else %}{{ r.fecha.strftime('%d/%m/%Y') }}{% endif %}
+                                {% else %}-{% endif %}
+                            </td>
+                            <td><span class="badge bg-info text-dark">{{ r.actividad }}</span></td>
+                            <td>{{ r.descripcion }}</td>
+                            <td class="fw-bold text-end pe-4">{{ r.horas }} hs</td>
+                            <td>
+                                {% if r.firma_bombero_fecha and r.firma_supervisor_fecha %}
+                                    <span class="badge bg-success">FINALIZADA</span>
+                                {% elif r.firma_bombero_fecha %}
+                                    <span class="badge bg-warning text-dark">ESP. SUPERVISOR</span>
+                                {% else %}
+                                    <span class="badge bg-danger">BORRADOR</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4 text-muted">No se encontraron registros en esta categoría.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+                
+                {% if registros %}
+                <tfoot class="table-light border-top border-dark">
+                    <tr class="fw-bold">
+                        <td colspan="2" class="text-start ps-3 small text-muted">REGISTROS: {{ registros|length }}</td>
+                        <td class="text-end text-uppercase small">Total Acumulado:</td>
+                        <td class="text-end pe-4 text-primary fs-5">
+                            {{ total_horas }} <small>hs</small>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

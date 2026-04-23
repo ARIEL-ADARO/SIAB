@@ -110,10 +110,17 @@ def login():
         es_valido = False
         if usuario:
             hash_db = usuario["password_hash"]
-            # Intento 1: ¿Es el formato del escritorio (con :)?
-            if ":" in hash_db:
+            
+            # Intento 1: Formato de Werkzeug/Flask (el que generamos recién: scrypt, pbkdf2, etc.)
+            from werkzeug.security import check_password_hash
+            if hash_db.startswith(('scrypt:', 'pbkdf2:')):
+                es_valido = check_password_hash(hash_db, password)
+            
+            # Intento 2: ¿Es el formato del escritorio (con : pero sin prefijo)?
+            elif ":" in hash_db:
                 es_valido = verificar_password_siab(password, hash_db)
-            # Intento 2: ¿Es el formato del ADMIN (SHA256 simple)?
+            
+            # Intento 3: ¿Es el formato del ADMIN (SHA256 simple)?
             else:
                 import hashlib
                 hash_intento = hashlib.sha256(password.encode()).hexdigest()
@@ -1109,43 +1116,80 @@ def obtener_datos_completos_perfil(legajo):
 
     try:
         cur = conn.cursor(dictionary=True)
-        
-        # 1. Buscamos datos básicos (Nombre, Apellido, Grado)
+        from datetime import datetime
+        mes_actual = datetime.now().strftime('%Y-%m')
+
+        # 1. Datos básicos
         cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
         perfil_base = cur.fetchone()
+        if perfil_base: datos.update(perfil_base)
+
+        # 2. CÁLCULO DE INDICADORES DE IMPACTO
+        # -----------------------------------------------------------
         
-        if perfil_base:
-            datos.update(perfil_base)
-        else:
-            print(f"Aviso: El legajo {legajo} no está en la tabla de personal. Usando perfil genérico.")
-
-        # 2. Historial Real (Desde la tabla 'actividades' del programa local)
-        # Adaptamos las columnas de 'actividades' para que el HTML las entienda
+        # CLASES OBLIGATORIAS (Pilar Capacitación)
+        # Contamos asistencias presentes en el mes. Cada una vale 2.5 pts.
         cur.execute("""
-            SELECT 
-                fecha_inicio AS fecha, 
-                actividad AS tipo, 
-                descripcion, 
-                estado AS asistencia_estado,
-                'FINALIZADO' AS evento_status, 
-                0 AS calificacion
+            SELECT COUNT(*) as total 
+            FROM asistencia 
+            WHERE legajo = %s AND estado = 'PRESENTE' 
+            AND fecha_registro LIKE %s
+        """, (legajo, f"{mes_actual}%"))
+        clases_asistidas = cur.fetchone()['total'] or 0
+        
+        datos['puntos_capacitacion'] = min(clases_asistidas * 2.5, 5.0)
+        datos['clases_conteo'] = clases_asistidas
+
+        # HORAS DE ACTIVIDAD (Gestión/Dedicación) - ACUMULADO TOTAL
+        cur.execute("""
+            SELECT SUM(horas) as total_horas 
             FROM actividades 
-            WHERE legajo = %s AND anulada = 0
-            ORDER BY fecha_inicio DESC, hora_inicio DESC 
-            LIMIT 20
+            WHERE legajo = %s AND actividad NOT IN ('PRÁCTICA', 'CAPACITACIÓN')
+            AND anulada = 0
+        """, (legajo,)) # Quitamos el parámetro del mes
+        horas_gestion = cur.fetchone()['total_horas'] or 0
+
+        datos['horas_actividad_reales'] = round(horas_gestion, 1)
+        # Aplicamos el tope: 10hs = 5pts.
+        datos['puntos_actividad'] = min((horas_gestion / 10) * 5, 5.0)
+
+        # EMERGENCIAS (Pilar Operativo - RUBA Placeholder)
+        datos['total_salidas'] = 0 
+        datos['puntos_operativo'] = 0.0
+
+        # FIRMAS PENDIENTES (Solo borradores del bombero)
+        cur.execute("""
+            SELECT COUNT(*) as total FROM actividades 
+            WHERE legajo = %s AND firma_bombero_fecha IS NULL AND anulada = 0
         """, (legajo,))
-        historial = cur.fetchall()
+        datos['pendientes_firma_bombero'] = cur.fetchone()['total']
 
-        # 3. Promedio (Opcional: Si no usas notas en 'actividades', lo dejamos en 0 o lo calculas de otra tabla)
-        # Por ahora lo dejamos como está en el diccionario 'datos' para no ensuciar.
-
-        return datos, historial
-
+        # 3. Historial para los botones de "Ver más"
+        # Traemos las últimas 20 para tener datos rápidos
+        cur.execute("""
+            SELECT *, fecha_inicio AS fecha, actividad AS tipo 
+            FROM actividades WHERE legajo = %s AND anulada = 0
+            ORDER BY fecha_inicio DESC, hora_inicio DESC LIMIT 20
+        """, (legajo,))
+        historial_raw = cur.fetchall()
+        
+        historial = []
+        for h in historial_raw:
+            if h.get('fecha_inicio'):
+                try:
+                    h['fecha_display'] = h['fecha_inicio'].strftime('%d/%m/%Y')
+                except:
+                    h['fecha_display'] = str(h['fecha_inicio'])
+            historial.append(h)
     except Exception as e:
-        print(f"ERROR EN PERFIL/ACTIVIDADES: {e}")
+        print(f"Error en el perfil: {e}")
         return datos, [] 
+    
     finally:
-        conn.close()
+        if 'cur' in locals():
+            cur.close()
+
+    return datos, historial
 
 @app.route("/ver-perfil/<int:legajo_id>")
 @rol_requerido('ADMIN', 'JEFATURA')
@@ -1389,6 +1433,68 @@ def mis_actividades():
     
     # Aquí es donde le "pasamos" la lista a la plantilla
     return render_template("actividades.html", actividades=lista_actividades)
+
+@app.route("/mis-capacitaciones")
+@login_requerido
+def mis_capacitaciones():
+    legajo = session.get('legajo')
+    db = get_db()
+    if not db:
+        return "Error de conexión a la base de datos", 500
+        
+    try:
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT *, fecha_inicio as fecha 
+            FROM actividades 
+            WHERE legajo = %s AND actividad IN ('PRÁCTICA', 'CAPACITACIÓN') AND anulada = 0
+            ORDER BY fecha_inicio DESC
+        """, (legajo,))
+        registros = cur.fetchall()
+        
+        # 1. PRIMERO HACEMOS LA SUMA
+        total_horas = sum(float(r['horas'] or 0) for r in registros)
+
+        # 2. DESPUÉS HACEMOS EL RETURN (enviando todas las variables)
+        return render_template("detalle_actividades.html", 
+                               titulo="Mis Capacitaciones", 
+                               registros=registros, 
+                               total_horas=total_horas)
+    
+    finally:
+        cur.close()
+        db.close()
+
+@app.route("/mis-actividades-gestion")
+@login_requerido
+def mis_actividades_gestion():
+    legajo = session.get('legajo')
+    db = get_db()
+    if not db:
+        return "Error de conexión a la base de datos", 500
+        
+    try:
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT *, fecha_inicio as fecha 
+            FROM actividades 
+            WHERE legajo = %s AND actividad NOT IN ('PRÁCTICA', 'CAPACITACIÓN') AND anulada = 0
+            ORDER BY fecha_inicio DESC
+        """, (legajo,))
+        registros = cur.fetchall()
+
+        # 1. PRIMERO HACEMOS LA SUMA
+        total_horas = sum(float(r['horas'] or 0) for r in registros)
+
+        # 2. DESPUÉS HACEMOS EL RETURN
+        return render_template("detalle_actividades.html", 
+                               titulo="Gestión y Dedicación", 
+                               registros=registros, 
+                               total_horas=total_horas)
+
+    finally:
+        cur.close()
+        db.close()
 
 @app.route('/admin/backup')
 def ejecutar_backup():
