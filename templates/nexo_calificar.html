@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">Calificación de Desempeño: Parte #{{ siniestro.nro_part_ruba }}</h5>
+        </div>
+        <div class="card-body">
+            <p><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }} en {{ siniestro.lugar }}</p>
+            
+            <div class="alert alert-info d-flex justify-content-between align-items-center">
+                <span>¿Asignar puntaje estándar a todos los presentes?</span>
+                <button type="button" class="btn btn-sm btn-primary" onclick="setEstandar(2.5)">Asignar 2.5 pts</button>
+            </div>
+
+            <form method="POST">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Bombero</th>
+                            <th>Móvil / Rol</th>
+                            <th style="width: 150px;">Puntaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in personal %}
+                        <tr>
+                            <td>
+                                <strong>{{ p.apellido }}, {{ p.nombre }}</strong>
+                                <input type="hidden" name="legajos" value="{{ p.legajo }}">
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ p.movil }}</span> 
+                                <small>{{ p.rol }}</small>
+                            </td>
+                            <td>
+                                <input type="number" step="0.1" name="puntos_{{ p.legajo }}" 
+                                       id="input_{{ p.legajo }}" class="form-control puntaje-field" 
+                                       value="0.0">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <div class="mt-4">
+                    <label>Observaciones del desempeño general:</label>
+                    <textarea name="observaciones" class="form-control" rows="2"></textarea>
+                </div>
+
+                <div class="mt-4 text-end">
+                    <a href="{{ url_for('listado_siniestros') }}" class="btn btn-light">Cancelar</a>
+                    <button type="submit" class="btn btn-success">Finalizar y Cargar Puntos</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function setEstandar(valor) {
+    document.querySelectorAll('.puntaje-field').forEach(input => {
+        input.value = valor;
+    });
+}
+</script>
+{% endblock %}

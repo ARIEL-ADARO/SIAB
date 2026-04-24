@@ -1153,9 +1153,31 @@ def obtener_datos_completos_perfil(legajo):
         # Aplicamos el tope: 10hs = 5pts.
         datos['puntos_actividad'] = min((horas_gestion / 10) * 5, 5.0)
 
-        # EMERGENCIAS (Pilar Operativo - RUBA Placeholder)
-        datos['total_salidas'] = 0 
-        datos['puntos_operativo'] = 0.0
+        # EMERGENCIAS (Pilar Operativo - Conectado a Registro de Salidas)
+        # -----------------------------------------------------------
+        # Sumamos los puntos de las intervenciones calificadas del mes actual
+        cur.execute("""
+            SELECT 
+                COUNT(p.id) as total_salidas,
+                SUM(p.puntos_operativos) as puntos_totales
+            FROM nexo_personal p
+            JOIN nexo_siniestros s ON p.siniestro_id = s.id
+            WHERE p.legajo = %s 
+            AND s.estado = 'CALIFICADO'
+            AND s.fecha LIKE %s
+        """, (legajo, f"{mes_actual}%"))
+        
+        resumen_operativo = cur.fetchone()
+        
+        # Guardamos los valores en el diccionario 'datos' para el radar
+        total_salidas = resumen_operativo['total_salidas'] or 0
+        puntos_ope = float(resumen_operativo['puntos_totales'] or 0.0)
+
+        datos['total_salidas'] = total_salidas
+        # El radar suele tener un tope (ej: 5.0) para no deformarse
+        datos['puntos_operativo'] = min(puntos_ope, 5.0) 
+        # Guardamos el real por si queremos mostrarlo en texto
+        datos['puntos_operativo_reales'] = puntos_ope
 
         # FIRMAS PENDIENTES (Solo borradores del bombero)
         cur.execute("""
@@ -1165,7 +1187,6 @@ def obtener_datos_completos_perfil(legajo):
         datos['pendientes_firma_bombero'] = cur.fetchone()['total']
 
         # 3. Historial para los botones de "Ver más"
-        # Traemos las últimas 20 para tener datos rápidos
         cur.execute("""
             SELECT *, fecha_inicio AS fecha, actividad AS tipo 
             FROM actividades WHERE legajo = %s AND anulada = 0
@@ -1181,6 +1202,34 @@ def obtener_datos_completos_perfil(legajo):
                 except:
                     h['fecha_display'] = str(h['fecha_inicio'])
             historial.append(h)
+
+        # --- AQUÍ EMPIEZA LA SUGERENCIA: INTEGRACIÓN DE SALIDAS ---
+        cur.execute("""
+            SELECT 
+                s.fecha as fecha, 
+                s.tipo_siniestro as tipo, 
+                CONCAT('Móvil: ', p.movil, ' - Rol: ', p.rol) as descripcion, 
+                p.puntos_operativos as horas,
+                s.fecha as fecha_inicio
+            FROM nexo_personal p
+            JOIN nexo_siniestros s ON p.siniestro_id = s.id
+            WHERE p.legajo = %s AND s.estado = 'CALIFICADO'
+            ORDER BY s.fecha DESC LIMIT 10
+        """, (legajo,))
+        
+        intervenciones = cur.fetchall()
+        for i in intervenciones:
+            if i.get('fecha'):
+                try:
+                    i['fecha_display'] = i['fecha'].strftime('%d/%m/%Y')
+                except:
+                    i['fecha_display'] = str(i['fecha'])
+            historial.append(i)
+
+        # Volvemos a ordenar la lista completa por fecha para que no queden las salidas todas al final
+        historial.sort(key=lambda x: x.get('fecha_inicio') if x.get('fecha_inicio') else x.get('fecha'), reverse=True)
+        # --- FIN DE LA SUGERENCIA ---
+
     except Exception as e:
         print(f"Error en el perfil: {e}")
         return datos, [] 
@@ -1355,24 +1404,26 @@ def listado_actividades():
         actividades = []
         if conn:
             cursor = conn.cursor(dictionary=True)
-            # Corregimos 'c.conceptos' a 'c.concepto'
+            # Traemos el nombre del concepto para mostrarlo como 'tipo' de actividad
             query = """
                 SELECT 
                     e.id, 
                     e.fecha as fecha_inicio, 
-                    e.tipo, 
+                    c.concepto as tipo, 
                     e.descripcion, 
                     c.concepto as concepto_nombre,
                     5 as asignado 
                 FROM eventos e 
                 LEFT JOIN conceptos c ON e.concepto_id = c.id 
                 WHERE e.estado = 'FINALIZADO'
+                /* Aquí podrías filtrar para excluir capacitaciones si fuera necesario */
+                AND c.concepto NOT IN ('CAPACITACIÓN', 'CURSO')
                 ORDER BY e.fecha DESC
             """
             cursor.execute(query)
             actividades = cursor.fetchall()
             
-            print(f"DEBUG: Filas encontradas: {len(actividades)}")
+            print(f"DEBUG SIAB: Actividades de cuartel encontradas: {len(actividades)}")
             
             cursor.close()
             conn.close()
@@ -1380,9 +1431,27 @@ def listado_actividades():
         return render_template('actividades.html', actividades=actividades)
 
     except Exception as e:
-        # Esto te ayuda a ver el error real en la consola de Python
-        print(f"Error en actividades: {e}")
-        return f"Error detectado: {e}"
+        print(f"Error crítico en actividades: {e}")
+        return f"Error detectado en el listado de actividades: {e}"
+    
+@app.route('/registro-salidas/listado')
+@login_requerido
+def listado_siniestros():
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    
+    # AGREGÁ 'id' AL PRINCIPIO DEL SELECT
+    cur.execute("""
+        SELECT id, nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado 
+        FROM nexo_siniestros 
+        ORDER BY id DESC
+    """)
+    
+    mis_datos = cur.fetchall()
+    cur.close()
+    db.close()
+    
+    return render_template('siniestros_listado.html', siniestros=mis_datos)
 
 @app.route('/actividades/nueva', methods=['GET', 'POST'])
 def nueva_actividad():
@@ -1495,6 +1564,221 @@ def mis_actividades_gestion():
     finally:
         cur.close()
         db.close()
+
+from datetime import datetime
+
+@app.route('/planilla-nexo/nueva', methods=['GET', 'POST'])
+@login_requerido
+def nueva_planilla_nexo():
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    if request.method == 'POST':
+        try:
+            nro_parte = request.form.get('nro_parte')
+            tipo = request.form.get('tipo_siniestro')
+            lugar = request.form.get('lugar')
+            fecha = request.form.get('fecha') 
+            hora = request.form.get('hora_salida')
+
+            sql_siniestro = """
+                INSERT INTO nexo_siniestros (nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado)
+                VALUES (%s, %s, %s, %s, %s, 'BORRADOR')
+            """
+            cur.execute(sql_siniestro, (nro_parte, fecha, hora, tipo, lugar))
+            siniestro_id = cur.lastrowid
+
+            bomberos_seleccionados = request.form.getlist('bomberos_seleccionados')
+            for legajo in bomberos_seleccionados:
+                movil = request.form.get(f'movil_{legajo}')
+                rol = request.form.get(f'rol_{legajo}')
+                cur.execute("INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol) VALUES (%s, %s, %s, %s)", 
+                            (siniestro_id, legajo, movil, rol))
+
+            db.commit()
+            flash(f"Registro #{siniestro_id} guardado.", "success")
+            return redirect(url_for('listado_siniestros'))
+        except Exception as e:
+            db.rollback()
+            print(f"Error al guardar: {e}")
+            flash("Error al guardar.", "danger")
+            return redirect(url_for('nueva_planilla_nexo'))
+
+    # --- MÉTODO GET: CARGA DE FORMULARIO ---
+    # Usamos LIKE para que si hay espacios locos o caracteres raros, los encuentre igual
+    cur.execute("""
+        SELECT legajo, nombre, apellido, situacion 
+        FROM legajos 
+        WHERE situacion LIKE '%ACTIVO%' 
+           OR situacion LIKE '%RESERVA%'
+        ORDER BY apellido ASC
+    """)
+    res_bomberos = cur.fetchall()
+    
+    # DEBUG: Esto te dirá en la consola negra cuántos cargó realmente
+    print(f"DEBUG SIAB: Enviando {len(res_bomberos)} bomberos al HTML")
+
+    fecha_hoy = datetime.now().strftime('%Y-%m-%d')
+    hora_hoy = datetime.now().strftime('%H:%M')
+    
+    cur.close()
+    db.close()
+    
+    # IMPORTANTE: El nombre a la IZQUIERDA del igual debe ser 'bomberos'
+    return render_template('nexo_form.html', 
+                           bomberos=res_bomberos, 
+                           fecha_hoy=fecha_hoy, 
+                           hora_hoy=hora_hoy)
+    
+@app.route('/planilla-nexo/imprimir/<int:id>')
+@login_requerido
+def imprimir_nexo(id):
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    
+    # Traemos datos del siniestro
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro = cur.fetchone()
+    
+    # Traemos los bomberos asociados con sus nombres
+    cur.execute("""
+        SELECT p.*, b.nombre, b.apellido 
+        FROM nexo_personal p
+        JOIN bomberos b ON p.legajo = b.legajo
+        WHERE p.siniestro_id = %s
+    """, (id,))
+    personal = cur.fetchall()
+    
+    return render_template('nexo_print.html', siniestro=siniestro, personal=personal)
+
+    # ==================================================
+    # PLANILLA NEXO PARA FIRMAS
+    # ==================================================
+    def exportar_planilla_nexo(self, file_path, siniestro, personal):
+        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.units import cm
+
+        elementos = []
+        estilo_texto = self.styles['Normal']
+        estilo_texto.fontSize = 10
+
+        # --- 1. BLOQUE DATOS DEL SINIESTRO ---
+        datos_siniestro = [
+            [f"Nro Parte RUBA: {siniestro['nro_part_ruba']}", f"Fecha: {siniestro['fecha']}"],
+            [f"Tipo: {siniestro['tipo_siniestro']}", f"Lugar: {siniestro['lugar']}"],
+        ]
+        t_sin = Table(datos_siniestro, colWidths=[8*cm, 8*cm])
+        t_sin.setStyle(TableStyle([('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold')]))
+        elementos.append(t_sin)
+        elementos.append(Spacer(1, 0.5 * cm))
+
+        # --- 2. TABLA DE PERSONAL ---
+        headers = ['LEGAJO', 'APELLIDO Y NOMBRE', 'MÓVIL', 'ROL', 'FIRMA']
+        data = [headers]
+        
+        for p in personal:
+            data.append([
+                p['legajo'],
+                f"{p['apellido']} {p['nombre']}",
+                p['movil'],
+                p['rol'],
+                "________________" # Espacio para firma física
+            ])
+
+        tabla = Table(data, repeatRows=1, colWidths=[2*cm, 6*cm, 2.5*cm, 3.5*cm, 3*cm])
+        tabla.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#a50000")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8), # Más espacio para la firma
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        elementos.append(tabla)
+        elementos.append(Spacer(1, 1.5 * cm))
+
+        # --- 3. BLOQUE DE FIRMAS AUTORIDAD ---
+        firmas_data = [
+            ["___________________________", "___________________________"],
+            ["Firma Jefe de Dotación", "Firma Oficial de Turno"]
+        ]
+        t_firmas = Table(firmas_data, colWidths=[8*cm, 8*cm])
+        t_firmas.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,1), (-1,1), 9),
+        ]))
+        elementos.append(t_firmas)
+
+        # Usamos tu base unificada para generar el PDF con logo y header
+        self.crear_pdf_unificado(file_path, elementos, "PLANILLA NEXO DE INTERVENCIÓN")
+
+from pdf_manager import PDFManager
+
+@app.route('/imprimir-nexo/<int:id>')
+def ruta_imprimir_nexo(id):
+    # 1. Obtener datos de la DB (siniestro y personal)
+    # ... (tus consultas SQL aquí) ...
+    
+    # 2. Configurar PDFManager
+    manager = PDFManager(session) # session tiene legajo, nombre, apellido
+    
+    filename = f"nexo_{id}.pdf"
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    # 3. Generar el archivo
+    manager.exportar_planilla_nexo(file_path, siniestro_data, personal_data)
+    
+    return send_file(file_path, as_attachment=False)
+
+@app.route('/registro-salidas/calificar/<int:id>')
+@login_requerido
+def calificar_salida(id):
+    # Verificamos si el rol tiene permiso
+    rol_usuario = session.get('rol')
+    permisos_autorizados = ['ADMIN', 'ENCARGADO', 'SUPERVISOR']
+
+    if rol_usuario not in permisos_autorizados:
+        flash("No tenés permisos para calificar salidas.", "danger")
+        return redirect(url_for('listado_siniestros'))
+    
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    if request.method == 'POST':
+        # 1. Recibimos los puntos de cada bombero
+        # El formulario enviará un diccionario con legajo: puntaje
+        for legajo in request.form.getlist('legajos'):
+            puntos = request.form.get(f'puntos_{legajo}')
+            
+            # Actualizamos la tabla nexo_personal
+            cur.execute("""
+                UPDATE nexo_personal 
+                SET puntos_operativos = %s 
+                WHERE siniestro_id = %s AND legajo = %s
+            """, (puntos, id, legajo))
+
+        # 2. Marcamos el siniestro como CALIFICADO
+        cur.execute("UPDATE nexo_siniestros SET estado = 'CALIFICADO' WHERE id = %s", (id,))
+        
+        db.commit()
+        flash("Puntajes asignados correctamente. El radar de los bomberos ha sido actualizado.", "success")
+        return redirect(url_for('listado_siniestros'))
+
+    # GET: Datos para la pantalla
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro = cur.fetchone()
+
+    cur.execute("""
+        SELECT p.*, b.apellido, b.nombre 
+        FROM nexo_personal p
+        JOIN bomberos b ON p.legajo = b.legajo
+        WHERE p.siniestro_id = %s
+    """, (id,))
+    personal = cur.fetchall()
+
+    return render_template('nexo_calificar.html', siniestro=siniestro, personal=personal)        
 
 @app.route('/admin/backup')
 def ejecutar_backup():

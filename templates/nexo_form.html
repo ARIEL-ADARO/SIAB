@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+<div class="container mt-4 mb-5">
+    <div class="card shadow border-0">
+        <div class="card-header bg-danger text-white">
+            <h4 class="mb-0"><i class="bi bi-megaphone"></i> Registro de Salida de Emergencia</h4>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('nueva_planilla_nexo') }}" method="POST">
+                <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Nro Parte RUBA</label>
+                        <input type="text" name="nro_parte" class="form-control border-danger" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Tipo de Siniestro</label>
+                        <select name="tipo_siniestro" class="form-select border-danger">
+                            <option value="INCENDIO FORESTAL">INCENDIO FORESTAL</option>
+                            <option value="INCENDIO ESTRUCTURAL">INCENDIO ESTRUCTURAL</option>
+                            <option value="ACCIDENTE VIAL">ACCIDENTE VIAL</option>
+                            <option value="RESCATE DE PERSONA">RESCATE DE PERSONA</option>
+                            <option value="SERVICIO ESPECIAL">SERVICIO ESPECIAL</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Fecha</label>
+                        <input type="date" name="fecha" value="{{ fecha_hoy }}" class="form-control border-danger">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Hora Salida</label>
+                        <input type="time" name="hora_salida" value="{{ hora_hoy }}" class="form-control border-danger">
+                    </div>
+                </div>
+
+                <div class="table-responsive bg-white rounded shadow-sm">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th class="text-center" style="width: 80px;">¿Salió?</th>
+                                <th>Bombero</th>
+                                <th style="width: 200px;">Móvil</th>
+                                <th style="width: 250px;">Rol</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for b in bomberos %}
+                            <tr class="bombero-row">
+                                <td class="text-center">
+                                    <input type="checkbox" name="bomberos_seleccionados" value="{{ b.legajo }}" 
+                                           class="form-check-input check-bombero" onchange="toggleFila(this)">
+                                </td>
+                                <td>
+                                    <div class="fw-bold text-uppercase">{{ b.apellido }}, {{ b.nombre }}</div>
+                                    <small class="text-muted">Legajo: {{ b.legajo }} | {{ b.situacion }}</small>
+                                </td>
+                                <td>
+                                    <input type="text" name="movil_{{ b.legajo }}" class="form-control form-control-sm input-hidden" 
+                                           placeholder="Móvil" disabled>
+                                </td>
+                                <td>
+                                    <select name="rol_{{ b.legajo }}" class="form-select form-select-sm input-hidden" disabled>
+                                        <option value="OPERATIVO">OPERATIVO</option>
+                                        <option value="CHOFER">CHOFER</option>
+                                        <option value="JEFE DE DOTACION">JEFE DE DOTACIÓN</option>
+                                        <option value="OPERADOR DE RADIO">OPERADOR DE RADIO</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 d-flex justify-content-end">
+                    <button type="submit" class="btn btn-danger btn-lg px-5 shadow">GUARDAR REGISTRO</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleFila(checkbox) {
+    const fila = checkbox.closest('.bombero-row');
+    const inputs = fila.querySelectorAll('.input-hidden');
+    if (checkbox.checked) {
+        fila.style.backgroundColor = "#fff3cd";
+        inputs.forEach(i => i.disabled = false);
+    } else {
+        fila.style.backgroundColor = "";
+        inputs.forEach(i => i.disabled = true);
+    }
+}
+</script>
+{% endblock %}

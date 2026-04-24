@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIAB - {% block titulo %}{% endblock %}</title>
+    <title>SIAB - {% block titulo %}Gestión Operativa{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -113,56 +113,61 @@
                 <i class="bi bi-house"></i> Inicio
             </a>
 
-            <div class="sidebar-section">Asistencia</div>
+            <div class="sidebar-section">Gestión Operativa</div>
+
+            <a href="{{ url_for('nueva_planilla_nexo') }}" class="nav-link text-warning fw-bold">
+                <i class="bi bi-megaphone"></i> CARGAR SALIDA
+            </a>
+
+            <a href="{{ url_for('listado_siniestros') }}" class="nav-link {% if request.endpoint == 'listado_siniestros' %}active{% endif %}">
+                <i class="bi bi-journal-text"></i> Registro de Salidas
+            </a>
+
+            <div class="sidebar-section">Formación Obligatoria</div>
             {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
                 <a class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}" href="{{ url_for('asistencia') }}">
                     <i class="bi bi-check2-square"></i> Tomar Asistencia
                 </a>
             {% endif %}
+            
             <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
-                <i class="bi bi-clock-history"></i> Historial
+                <i class="bi bi-book"></i> Capacitaciones
             </a>
 
-            <div class="sidebar-section">Capacitación</div>
-            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
-                <a href="{{ url_for('nuevo_curso') }}" class="nav-link {% if request.endpoint == 'nuevo_curso' %}active{% endif %}">
-                    <i class="bi bi-mortarboard"></i> Registrar Curso
-                </a>
-            {% endif %}
+            <div class="sidebar-section">Perfeccionamiento</div>
             <a href="{{ url_for('cursos') }}" class="nav-link {% if request.endpoint == 'cursos' %}active{% endif %}">
-                <i class="bi bi-journal-text"></i> Cursos
+                <i class="bi bi-award"></i> Cursos (Dictados/Recibidos)
             </a>
 
-            <div class="sidebar-section">Organización</div>
+            <div class="sidebar-section">Gestión Operativa</div>
+            <a href="{{ url_for('listado_actividades') }}" class="nav-link {% if request.endpoint == 'listado_actividades' %}active{% endif %}">
+                <i class="bi bi-calendar-check"></i> Actividades de Cuartel
+            </a> 
+
             <a href="{{ url_for('departamentos') }}" class="nav-link {% if request.endpoint == 'departamentos' %}active{% endif %}">
                 <i class="bi bi-diagram-3"></i> Departamentos
             </a>
 
-            <a href="{{ url_for('listado_actividades') }}" class="nav-link {% if request.endpoint == 'listado_actividades' %}active{% endif %}">
-                <i class="bi bi-calendar-event"></i> Actividades
-            </a>            
-
+            <div class="sidebar-section">Personal</div>
             <a href="{{ url_for('bomberos') }}" class="nav-link {% if request.endpoint == 'bomberos' %}active{% endif %}">
-                <i class="bi bi-people"></i> Listado Bomberos
+                <i class="bi bi-people"></i> Listado de Legajos
             </a>
 
             {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
             <a href="{{ url_for('reporte_actividad') }}" class="nav-link {% if request.endpoint == 'reporte_actividad' %}active{% endif %} text-info">
-                <i class="bi bi-bar-chart-line"></i> Reporte Rendimiento
+                <i class="bi bi-bar-chart-line"></i> Estadísticas Rendimiento
             </a>
             {% endif %}
 
             {% if session.get('rol') == 'ADMIN' %}
                 <div class="sidebar-section">Configuración</div>
-                
                 <a href="{{ url_for('config_puntos') }}" class="nav-link {% if request.endpoint == 'config_puntos' %}active{% endif %}">
-                    <i class="bi bi-gear"></i> Puntos
+                    <i class="bi bi-gear"></i> Sistema de Puntos
                 </a>
-
                 <a href="{{ url_for('ejecutar_backup') }}" 
                    class="nav-link text-warning fw-bold" 
-                   onclick="return confirm('¿Desea generar una copia de seguridad de la base de datos SQL ahora?')">
-                    <i class="bi bi-database-down"></i> Generar Respaldo
+                   onclick="return confirm('¿Desea generar una copia de seguridad?')">
+                    <i class="bi bi-database-down"></i> Respaldo SQL
                 </a>
             {% endif %}
         </div>
@@ -178,7 +183,10 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            {% block contenido %}{% endblock %}
+            <div class="col-lg-10 col-md-9 main-content">
+                {% block contenido %}
+                {% endblock %}
+            </div>
         </div>
     </div>
 </div>

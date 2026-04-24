@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block contenido %}  <div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-dark"><i class="bi bi-journal-text text-danger"></i> Registro de Salidas</h2>
+        <a href="{{ url_for('nueva_planilla_nexo') }}" class="btn btn-danger shadow">
+            <i class="bi bi-plus-circle"></i> Cargar Nueva Salida
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="ps-3">Parte RUBA</th>
+                        <th>Fecha</th>
+                        <th>Tipo de Siniestro</th>
+                        <th>Lugar</th>
+                        <th>Estado</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in siniestros %}
+                    <tr>
+                        <td class="ps-3 fw-bold">#{{ s.nro_part_ruba }}</td>
+                        <td>{{ s.fecha }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ s.tipo_siniestro }}</span></td>
+                        <td>{{ s.lugar if s.lugar else '<span class="text-muted">No especificado</span>' | safe }}</td>
+                        <td>
+                            {% if s.estado == 'BORRADOR' %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-pencil-square"></i> Borrador</span>
+                            {% elif s.estado == 'CALIFICADO' %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Calificado</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ s.estado }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group shadow-sm">
+                                <a href="#" class="btn btn-sm btn-outline-primary" title="Ver Detalle"><i class="bi bi-eye"></i></a>
+                                <a href="#" class="btn btn-sm btn-outline-danger" title="Descargar PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+                                
+                                {# Verificamos si el rol está autorizado para calificar #}
+                                {% if session.get('rol') in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
+                                    {% if s.estado == 'BORRADOR' %}
+                                        <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
+                                            <i class="bi bi-star-fill"></i> Calificar
+                                        </a>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="bi bi-info-circle fs-2 d-block mb-2"></i>
+                            No hay salidas registradas aún.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
