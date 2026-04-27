@@ -1,6 +1,28 @@
 {% extends "base.html" %}
 
 {% block contenido %}
+<style>
+    /* Estilos para que los botones sean compactos y elegantes */
+    .btn-compact {
+        padding: 4px 15px !important;
+        font-size: 0.78rem !important;
+        width: 180px !important; /* Ancho fijo para orden visual */
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        border-radius: 20px !important;
+        margin: 0 auto;
+    }
+    .btn-compact i { margin-right: 8px; }
+    
+    /* Contenedor de acciones */
+    .acciones-card {
+        border-top: 1px solid #dee2e6;
+        padding-top: 15px;
+        margin-top: 15px;
+    }
+</style>
+
 <div class="container mt-4">
     <div class="row">
         <div class="col-md-4">
@@ -15,7 +37,7 @@
                     <hr>
                     <div class="text-start">
                         <p><strong>Cargo:</strong> {{ datos.cargo or 'Sin asignar' }}</p>
-                        <p><strong>Situación:</strong> {{ datos.situacion }}</p>
+                        <p><strong>Situacion:</strong> {{ datos.situacion }}</p>
                         <p><strong>Email:</strong> {{ datos.email or 'N/A' }}</p>
                     </div>
                 </div>
@@ -23,54 +45,40 @@
         </div>
 
         <div class="col-md-8">
-            
             <div class="row g-3 mb-4 text-center">
                 <div class="col-md-3">
                     <div class="card h-100 border-0 shadow-sm bg-gradient text-white" style="background: linear-gradient(45deg, #1a2a6c, #b21f1f);">
                         <div class="card-body p-2">
                             <h6 class="text-uppercase small opacity-75 mt-2">Clases Oblig.</h6>
-                            <h2 class="fw-bold mb-0">{{ datos.puntos_capacitacion }}</h2>
-                            <p class="mb-0 small">PUNTOS</p>
-                            <hr class="my-2 opacity-25">
+                            <h2 class="fw-bold mb-0">{{ datos.clases_conteo }}</h2>
                             <small class="d-block pb-2">{{ datos.clases_conteo }} de 2 clases</small>
                         </div>
                     </div>
                 </div>
-
                 <div class="col-md-3">
                     <div class="card h-100 border-0 shadow-sm border-start border-4 border-info">
                         <div class="card-body p-2">
                             <h6 class="text-uppercase text-muted small mt-2">Actividades</h6>
-                            <h2 class="fw-bold text-dark mb-0">{{ datos.horas_actividad_reales }}</h2>
-                            <p class="mb-0 small text-muted">HORAS</p>
-                            <hr class="my-2">
-                            <span class="badge rounded-pill bg-info text-dark">{{ datos.puntos_actividad }} / 5.0 pts</span>
+                            <h2 class="fw-bold text-dark mb-0">{{ datos.horas_actividad_reales | default(0) }}</h2>
+                            <span class="badge rounded-pill bg-info text-dark">{{ datos.pilar_vocacion }} / 5.0 pts</span>
                         </div>
                     </div>
                 </div>
-
                 <div class="col-md-3">
                     <div class="card h-100 border-0 shadow-sm border-start border-4 border-danger">
                         <div class="card-body p-2">
                             <h6 class="text-uppercase text-muted small mt-2">Siniestros</h6>
                             <h2 class="fw-bold text-danger mb-0">{{ datos.total_salidas }}</h2>
-                            <p class="mb-0 small text-muted">SALIDAS</p>
-                            <hr class="my-2">
-                            <small class="text-danger fw-bold">Puntos: {{ datos.puntos_operativo }}</small>
+                            <small class="text-danger fw-bold">Puntos: {{ datos.pilar_asistencia }}</small>
                         </div>
                     </div>
                 </div>
-
                 <div class="col-md-3">
-                    <div class="card h-100 border-0 shadow-sm {{ 'bg-warning-subtle border-start border-4 border-warning' if datos.pendientes_firma_bombero > 0 else 'bg-success-subtle border-start border-4 border-success' }}">
+                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-success">
                         <div class="card-body p-2">
                             <h6 class="text-uppercase text-muted small mt-2">Firmas</h6>
-                            <h2 class="fw-bold {{ 'text-warning' if datos.pendientes_firma_bombero > 0 else 'text-success' }} mb-0">
-                                {{ datos.pendientes_firma_bombero }}
-                            </h2>
-                            <p class="mb-0 small text-muted">BORRADORES</p>
-                            <hr class="my-2">
-                            <small class="fw-bold text-truncate">{{ 'Acción requerida' if datos.pendientes_firma_bombero > 0 else 'Al día' }}</small>
+                            <h2 class="fw-bold text-success mb-0">{{ datos.pendientes_firma_bombero }}</h2>
+                            <small class="fw-bold text-success">Al día</small>
                         </div>
                     </div>
                 </div>
@@ -78,28 +86,34 @@
 
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Mi Calificación Institucional</h5>
-                    <span class="badge bg-warning text-dark">Promedio Final: {{ datos.puntaje_final }} / 5</span>
+                    <h5 class="mb-0">Mi Calificacion Institucional</h5>
+                    <span class="badge bg-warning text-dark">Promedio Final: {{ datos.puntaje_final }}</span>
                 </div>
                 <div class="card-body">
                     <div class="row align-items-center">
-                        <div class="col-md-5 text-center">
-                            <canvas id="graficoPilares" style="max-height: 220px;"></canvas>
+                        <div class="col-md-6 text-center">
+                            <div style="height: 250px;">
+                                <canvas id="graficoPilares"></canvas>
+                            </div>
                         </div>
-                        <div class="col-md-7">
+                        <div class="col-md-6">
                             <div class="p-3 border rounded bg-light text-center">
                                 <h6 class="text-muted small text-uppercase">Estado de Legajo:</h6>
-                                <h3 class="fw-bold {% if 'INSUFICIENTE' in datos.calif_letra %}text-danger{% else %}text-success{% endif %}">
-                                    {{ datos.calif_letra }}
-                                </h3>
-                                <div class="d-grid gap-2 mt-3">
-                                    <a href="{{ url_for('mis_capacitaciones') }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-certificate"></i> Ver Capacitaciones
-                                    </a>
-                                    
-                                    <a href="{{ url_for('mis_actividades_gestion') }}" class="btn btn-sm btn-outline-secondary">
-                                        <i class="fas fa-tools"></i> Ver Mis Actividades
-                                    </a>
+                                <h3 class="fw-bold text-danger">{{ datos.calif_desc }} ({{ datos.calif_letra }})</h3>
+                                
+                                <div class="acciones-card">
+                                    <h6 class="text-muted small text-uppercase mb-3" style="font-size: 0.65rem;">Acciones Rápidas</h6>
+                                    <div class="d-flex flex-column gap-2">
+                                        <a href="{{ url_for('mis_capacitaciones') }}" class="btn btn-outline-primary btn-compact">
+                                            <i class="fas fa-certificate"></i> Capacitaciones
+                                        </a>
+                                        <a href="{{ url_for('mis_actividades_gestion') }}" class="btn btn-outline-secondary btn-compact">
+                                            <i class="fas fa-tools"></i> Actividades
+                                        </a>
+                                        <a href="{{ url_for('ver_mis_salidas') }}" class="btn btn-outline-danger btn-compact">
+                                            <i class="fas fa-fire"></i> Salidas ({{ datos.total_salidas }})
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -109,11 +123,37 @@
 
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">
-                    <h6 class="mb-0">Últimos Registros</h6>
+                    <h6 class="mb-0">Ultimos Registros</h6>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0">
-                        </table>
+                        <thead class="table-light">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Descripcion</th>
+                                <th class="text-end">Horas/Pts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set total_real = 0 %} {# Opcional: para recalcular el total visualmente #}
+                            
+                            {% for c in capacitaciones %}
+                                {# FILTRO: Solo mostramos si NO es ANULADO y NO es BORRADOR (si así lo deseas) #}
+                                {% if c.estado|upper != 'ANULADO' and c.estado|upper != 'BORRADOR' %}
+                                    <tr>
+                                        <td>{{ c.fecha }}</td>
+                                        <td>{{ c.actividad }}</td>
+                                        <td>{{ c.descripcion }}</td>
+                                        <td class="text-end">{{ c.horas }} hs</td>
+                                        <td>
+                                            <span class="badge bg-success">{{ c.estado }}</span>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -127,24 +167,19 @@
         new Chart(ctx, {
             type: 'radar',
             data: {
-                labels: ['Capacitación', 'Actividades', 'Cualidades', 'Operativo'],
+                labels: [['VOCACION', '(Actividades)'], 'CAP. TECNICA', 'CUALIDADES', ['ASISTENCIA', '(Siniestros)']],
                 datasets: [{
-                    label: 'Puntos',
-                    data: [
-                        {{ datos.puntos_capacitacion or 0 }}, 
-                        {{ datos.puntos_actividad or 0 }}, 
-                        {{ datos.pilar_cualidades or 0 }}, 
-                        {{ datos.puntos_operativo or 0 }}
-                    ],
-                    backgroundColor: 'rgba(26, 42, 108, 0.2)',
-                    borderColor: 'rgba(26, 42, 108, 1)',
-                    borderWidth: 2,
-                    pointBackgroundColor: 'rgba(178, 31, 31, 1)'
+                    label: 'Puntaje Actual',
+                    data: [{{ datos.pilar_vocacion }}, {{ datos.pilar_tecnica }}, {{ datos.pilar_cualidades }}, {{ datos.pilar_asistencia }}],
+                    backgroundColor: 'rgba(178, 31, 31, 0.2)',
+                    borderColor: 'rgba(178, 31, 31, 1)',
+                    borderWidth: 2
                 }]
             },
-            options: { 
-                scales: { r: { suggestedMin: 0, suggestedMax: 5, ticks: { stepSize: 1 } } },
-                plugins: { legend: { display: false } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { r: { min: 0, max: 5, ticks: { display: false } } }
             }
         });
     });

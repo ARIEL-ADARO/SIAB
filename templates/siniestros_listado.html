@@ -39,9 +39,15 @@
                         </td>
                         <td class="text-center">
                             <div class="btn-group shadow-sm">
-                                <a href="#" class="btn btn-sm btn-outline-primary" title="Ver Detalle"><i class="bi bi-eye"></i></a>
-                                <a href="#" class="btn btn-sm btn-outline-danger" title="Descargar PDF"><i class="bi bi-file-earmark-pdf"></i></a>
-                                
+                                <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Detalle">
+                                    <i class="bi bi-eye"></i>
+                               <a href="{{ url_for('detalle_siniestro', id=s.id) }}?print=true" 
+                                <a href="{{ url_for('detalle_siniestro', id=s.id) }}?print=true" 
+                                class="btn btn-sm btn-danger" 
+                                title="Imprimir Parte de Regreso" 
+                                target="_blank">
+                                    <i class="bi bi-printer-fill"></i> IMPRIMIR
+                                </a>                                                           
                                 {# Verificamos si el rol está autorizado para calificar #}
                                 {% if session.get('rol') in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
                                     {% if s.estado == 'BORRADOR' %}

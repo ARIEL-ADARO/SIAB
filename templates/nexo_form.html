@@ -13,14 +13,13 @@
                         <label class="form-label fw-bold">Nro Parte RUBA</label>
                         <input type="text" name="nro_parte" class="form-control border-danger" required>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Tipo de Siniestro</label>
-                        <select name="tipo_siniestro" class="form-select border-danger">
-                            <option value="INCENDIO FORESTAL">INCENDIO FORESTAL</option>
-                            <option value="INCENDIO ESTRUCTURAL">INCENDIO ESTRUCTURAL</option>
-                            <option value="ACCIDENTE VIAL">ACCIDENTE VIAL</option>
-                            <option value="RESCATE DE PERSONA">RESCATE DE PERSONA</option>
-                            <option value="SERVICIO ESPECIAL">SERVICIO ESPECIAL</option>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-danger">Tipo de Siniestro (SIAB)</label>
+                        <select name="tipo_siniestro_id" class="form-select shadow-sm" required>
+                            <option value="">-- Seleccionar Clasificación --</option>
+                            {% for t in tipos_siniestros %}
+                                <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -48,15 +47,39 @@
                             <tr class="bombero-row">
                                 <td class="text-center">
                                     <input type="checkbox" name="bomberos_seleccionados" value="{{ b.legajo }}" 
-                                           class="form-check-input check-bombero" onchange="toggleFila(this)">
+                                        class="form-check-input check-bombero" onchange="toggleFila(this)">
                                 </td>
                                 <td>
                                     <div class="fw-bold text-uppercase">{{ b.apellido }}, {{ b.nombre }}</div>
                                     <small class="text-muted">Legajo: {{ b.legajo }} | {{ b.situacion }}</small>
                                 </td>
                                 <td>
-                                    <input type="text" name="movil_{{ b.legajo }}" class="form-control form-control-sm input-hidden" 
-                                           placeholder="Móvil" disabled>
+                                    <select name="movil_{{ b.legajo }}" class="form-select form-select-sm input-hidden" disabled required>
+                                        <option value="" disabled selected>Móvil...</option>
+                                        
+                                        <optgroup label="Pesados">
+                                            <option value="Móvil 1">Móvil 1 - Autobomba</option>
+                                            <option value="Móvil 2">Móvil 2 - Autobomba</option>
+                                            <option value="Móvil 3">Móvil 3 - Autobomba 4x4</option>
+                                            <option value="Móvil 4">Móvil 4 - Cisterna</option>
+                                        </optgroup>
+
+                                        <optgroup label="Livianos / Logística">
+                                            <option value="Móvil 5">Móvil 5 - Traslado Personal</option>
+                                            <option value="Móvil 11">Móvil 11 - Pickup Logística</option>
+                                            <option value="Móvil 18">Móvil 18 - Semirrígido</option>
+                                        </optgroup>
+
+                                        <optgroup label="Forestales">
+                                            <option value="Móvil 6">Móvil 6 - Pickup Kit</option>
+                                            <option value="Móvil 8">Móvil 8 - Pickup Kit</option>
+                                        </optgroup>
+
+                                        <optgroup label="Otros">
+                                            <option value="Móvil Propio">Móvil Propio</option>
+                                            <option value="Otra Institución">Otra Institución</option>
+                                        </optgroup>
+                                    </select>
                                 </td>
                                 <td>
                                     <select name="rol_{{ b.legajo }}" class="form-select form-select-sm input-hidden" disabled>
@@ -81,15 +104,27 @@
 
 <script>
 function toggleFila(checkbox) {
-    const fila = checkbox.closest('.bombero-row');
-    const inputs = fila.querySelectorAll('.input-hidden');
-    if (checkbox.checked) {
-        fila.style.backgroundColor = "#fff3cd";
-        inputs.forEach(i => i.disabled = false);
-    } else {
-        fila.style.backgroundColor = "";
-        inputs.forEach(i => i.disabled = true);
-    }
+    // Buscamos la fila (tr) donde está el checkbox
+    let fila = checkbox.closest('tr');
+    
+    // Buscamos todos los elementos con la clase 'input-hidden' dentro de esa fila
+    // (el select de móvil y el select de rol)
+    let elementos = fila.querySelectorAll('.input-hidden');
+    
+    elementos.forEach(el => {
+        // Si el checkbox está marcado, habilitamos; si no, deshabilitamos
+        el.disabled = !checkbox.checked;
+        
+        // Mejora: Si está marcado, lo hacemos obligatorio para no dejar campos vacíos
+        if (checkbox.checked) {
+            el.setAttribute('required', 'required');
+            fila.classList.add('table-active'); // Un toque visual para resaltar la fila
+        } else {
+            el.removeAttribute('required');
+            el.value = ""; // Limpiamos el valor si se desmarca
+            fila.classList.remove('table-active');
+        }
+    });
 }
 </script>
 {% endblock %}

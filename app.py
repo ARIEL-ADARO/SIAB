@@ -13,6 +13,9 @@ import os
 import hashlib
 import hmac
 from werkzeug.security import check_password_hash
+ahora = datetime.now()
+# Esto genera "/04/2026", que es como termina la fecha en tu DB
+mes_busqueda = ahora.strftime('/%m/%Y')
 
 app = Flask(__name__)
 app.secret_key = "siab_bomberos_2026_secretkey"
@@ -98,7 +101,7 @@ def login():
 
         cur = conn.cursor(dictionary=True)
         cur.execute("""
-            SELECT u.*, l.nombre, l.apellido, l.grado
+            SELECT u.*, l.nombre, l.apellido, l.grado, l.cargo
             FROM usuarios u
             LEFT JOIN legajos l ON u.legajo = l.legajo
             WHERE u.username = %s AND u.activo = 1
@@ -137,6 +140,7 @@ def login():
             session["legajo"]     = usuario["legajo"]
             session["nombre"]     = nombre_completo
             session["grado"]      = usuario.get("grado") or "BOMBERO" 
+            session["cargo"]      = usuario.get("cargo") or ""
 
             flash(f"Bienvenido, {nombre_completo}!", "success")
             return redirect(url_for("inicio"))
@@ -500,35 +504,36 @@ def editar_borrador(evento_id):
 @login_requerido
 def historial_asistencia():
     ver_anulados = request.args.get("ver_anulados") == "1"
-    legajo_usuario = session.get('legajo') # <--- PASO 1: Obtener quién es el usuario
+    legajo_usuario = session.get('legajo')
     
     conn = get_db()
     eventos = []
     
+    # 1. DEFINIR LA QUERY BASE FUERA DE LOS IF DE FILTRADO
+    query = """
+        SELECT 
+            e.*, 
+            d.nombre as nombre_departamento,
+            (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'PRESENTE') as presentes,
+            (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'AUSENTE') as ausentes,
+            (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'JUSTIFICADO') as justificados,
+            a_personal.estado as mi_estado
+        FROM eventos e
+        LEFT JOIN departamentos d ON e.departamento_id = d.id
+        LEFT JOIN asistencia a_personal ON e.id = a_personal.evento_id AND a_personal.legajo = %s
+        WHERE 1=1
+    """
+
     if conn:
         cur = conn.cursor(dictionary=True)
         
-        # PASO 2: La consulta ahora tiene el "mi_estado"
-        query = """
-            SELECT 
-                e.*, 
-                d.nombre as nombre_departamento,
-                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'PRESENTE') as presentes,
-                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'AUSENTE') as ausentes,
-                (SELECT COUNT(*) FROM asistencia WHERE evento_id = e.id AND estado = 'JUSTIFICADO') as justificados,
-                a_personal.estado as mi_estado
-            FROM eventos e
-            LEFT JOIN departamentos d ON e.departamento_id = d.id
-            LEFT JOIN asistencia a_personal ON e.id = a_personal.evento_id AND a_personal.legajo = %s
-            WHERE 1=1
-        """
-        
+        # 2. AHORA SÍ PODÉS CONCATENAR SIN RIESGO
         if not ver_anulados:
             query += " AND e.estado != 'ANULADO'"
             
         query += " ORDER BY e.fecha DESC, e.id DESC LIMIT 50"
         
-        cur.execute(query, (legajo_usuario,)) # <--- PASO 3: Pasamos el legajo aquí
+        cur.execute(query, (legajo_usuario,))
         eventos = cur.fetchall()
         conn.close()
 
@@ -564,6 +569,42 @@ def detalle_asistencia(evento_id):
         conn.close()
 
     return render_template("detalle_asistencia.html", evento=evento, registros=registros)
+
+from datetime import datetime  # Asegurate de tener esta importación arriba de todo
+
+@app.route('/registro-salidas/detalle/<int:id>')
+@login_requerido
+def detalle_siniestro(id):
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    # 1. Obtener datos del siniestro
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro = cur.fetchone()
+
+    if not siniestro:
+        flash("Siniestro no encontrado.", "warning")
+        return redirect(url_for('listado_siniestros'))
+
+    # 2. Volvemos a tu consulta original (quitando l.jerarquia que dio error)
+    cur.execute("""
+        SELECT p.*, l.nombre, l.apellido 
+        FROM nexo_personal p
+        JOIN legajos l ON p.legajo = l.legajo
+        WHERE p.siniestro_id = %s
+    """, (id,))
+    personal = cur.fetchall()
+
+    cur.close()
+    db.close()
+
+    # Esto es lo que necesitábamos para la fecha y hora
+    ahora = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+    return render_template('nexo_detalle.html', 
+                           siniestro=siniestro, 
+                           personal=personal, 
+                           current_time=ahora)
 
 # ============================================================
 # CAPACITACIONES - POSTAS Y CALIFICACIONES
@@ -1088,176 +1129,137 @@ def reporte_actividad():
 
 def obtener_datos_completos_perfil(legajo):
     conn = get_db()
-    
-    # Perfil por defecto (esto es lo que verá el ADMIN si no está en la tabla legajos)
     datos = {
-        'legajo': legajo,
-        'apellido': 'ADMINISTRADOR',
-        'nombre': 'SISTEMA',
-        'grado': 'SOPORTE',
-        'cargo': 'ADMIN',
-        'dni': '0',
-        'situacion': 'ACTIVO',
-        'email': 'admin@sistema.com',
-        'nro_cel': 'N/A',
-        'asistencias_anio': 0,
-        'promedio_general': 0.0,
-        'pilar_vocacion': 5.0,
-        'pilar_capacidad': 5.0,
-        'pilar_asistencia': 5.0,
-        'pilar_cualidades': 5.0,
-        'puntaje_final': 5.0,
-        'calif_letra': "EXCELENTE"
+        'legajo': legajo, 'apellido': '---', 'nombre': '---',
+        'pilar_vocacion': 0.0, 'pilar_tecnica': 0.0,
+        'pilar_cualidades': 0.0, 'pilar_asistencia': 0.0,
+        'puntaje_final': 0.0, 'pendientes_firma_bombero': 0,
+        'calif_letra': '---', 'calif_desc': 'SIN CALIFICAR',
+        'grado': '---', 'cargo': 'Sin asignar', 'situacion': '---', 'email': 'N/A',
+        'clases_conteo': 0, 'total_salidas': 0,
+        'horas_actividad_reales': 0.0, 'puntos_actividad': 0.0 # <--- Aseguramos estas
     }
-    historial = []
 
-    if not conn:
-        return datos, [] # Devolvemos el perfil genérico en lugar de None
+    if not conn: return datos, []
 
     try:
         cur = conn.cursor(dictionary=True)
         from datetime import datetime
         mes_actual = datetime.now().strftime('%Y-%m')
 
-        # 1. Datos básicos
-        cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
-        perfil_base = cur.fetchone()
-        if perfil_base: datos.update(perfil_base)
+        # --- DATOS PERSONALES ---
+        cur.execute("SELECT apellido, nombre, grado, cargo, situacion, email FROM legajos WHERE legajo = %s", (legajo,))
+        perfil = cur.fetchone()
+        if perfil: datos.update(perfil)
 
-        # 2. CÁLCULO DE INDICADORES DE IMPACTO
-        # -----------------------------------------------------------
+        # --- PILAR 1: VOCACIÓN ---
+        cur.execute("""
+            SELECT (
+                (SELECT COALESCE(SUM(horas), 0) FROM actividades 
+                 WHERE legajo = %s AND anulada = 0 
+                 AND actividad NOT IN ('CAPACITACIÓN', 'CLASE OBLIGATORIA', 'PRÁCTICA')) +
+                (SELECT COALESCE(SUM(horas_servicio), 0) FROM nexo_servicios 
+                 WHERE legajo = %s AND estado = 'FINALIZADO')
+            ) as total""", (legajo, legajo))
+        res_voc = cur.fetchone()
+        h_total = float(res_voc['total'] or 0)
         
-        # CLASES OBLIGATORIAS (Pilar Capacitación)
-        # Contamos asistencias presentes en el mes. Cada una vale 2.5 pts.
-        cur.execute("""
-            SELECT COUNT(*) as total 
-            FROM asistencia 
-            WHERE legajo = %s AND estado = 'PRESENTE' 
-            AND fecha_registro LIKE %s
-        """, (legajo, f"{mes_actual}%"))
-        clases_asistidas = cur.fetchone()['total'] or 0
-        
-        datos['puntos_capacitacion'] = min(clases_asistidas * 2.5, 5.0)
-        datos['clases_conteo'] = clases_asistidas
+        datos['horas_actividad_reales'] = h_total
+        datos['puntos_actividad'] = round(min((h_total / 10) * 5, 5.0), 2)
+        datos['pilar_vocacion'] = datos['puntos_actividad'] # Sincronizamos para el diamante
 
-        # HORAS DE ACTIVIDAD (Gestión/Dedicación) - ACUMULADO TOTAL
+        # --- PILAR 2: CAPACIDAD TÉCNICA ---
         cur.execute("""
-            SELECT SUM(horas) as total_horas 
-            FROM actividades 
-            WHERE legajo = %s AND actividad NOT IN ('PRÁCTICA', 'CAPACITACIÓN')
-            AND anulada = 0
-        """, (legajo,)) # Quitamos el parámetro del mes
-        horas_gestion = cur.fetchone()['total_horas'] or 0
+            SELECT COALESCE(SUM(horas), 0) as pts FROM actividades 
+            WHERE legajo = %s AND actividad = 'PRÁCTICA' AND anulada = 0
+        """, (legajo,))
+        datos['pilar_tecnica'] = round(min(float(cur.fetchone()['pts'] or 0), 5.0), 2)
 
-        datos['horas_actividad_reales'] = round(horas_gestion, 1)
-        # Aplicamos el tope: 10hs = 5pts.
-        datos['puntos_actividad'] = min((horas_gestion / 10) * 5, 5.0)
+        # --- PILAR 3: CUALIDADES ---
+        cur.execute("SELECT nota_concepto FROM nexo_mesa_calificadora WHERE legajo = %s ORDER BY fecha_carga DESC LIMIT 1", (legajo,))
+        res_mesa = cur.fetchone()
+        datos['pilar_cualidades'] = round(float(res_mesa['nota_concepto'] or 0) / 2, 2) if res_mesa else 0.0
 
-        # EMERGENCIAS (Pilar Operativo - Conectado a Registro de Salidas)
-        # -----------------------------------------------------------
-        # Sumamos los puntos de las intervenciones calificadas del mes actual
+        # --- PILAR 4: ASISTENCIA ---
+        # Clases
+        cur.execute("SELECT COUNT(*) as cant FROM asistencia WHERE legajo=%s AND estado='PRESENTE' AND fecha_registro LIKE %s", (legajo, f"%{mes_busqueda}"))
+        res_clases = cur.fetchone()
+        datos['clases_conteo'] = res_clases['cant'] if res_clases else 0
+        pts_clases = min(datos['clases_conteo'] * 2.5, 5.0)
+
+        # Siniestros
+        # 1. Buscamos el máximo del mes (Solo calificados para la competencia)
         cur.execute("""
-            SELECT 
-                COUNT(p.id) as total_salidas,
-                SUM(p.puntos_operativos) as puntos_totales
-            FROM nexo_personal p
+            SELECT COUNT(p.id) as cant FROM nexo_personal p 
             JOIN nexo_siniestros s ON p.siniestro_id = s.id
-            WHERE p.legajo = %s 
-            AND s.estado = 'CALIFICADO'
-            AND s.fecha LIKE %s
-        """, (legajo, f"{mes_actual}%"))
-        
-        resumen_operativo = cur.fetchone()
-        
-        # Guardamos los valores en el diccionario 'datos' para el radar
-        total_salidas = resumen_operativo['total_salidas'] or 0
-        puntos_ope = float(resumen_operativo['puntos_totales'] or 0.0)
+            WHERE s.fecha LIKE %s AND s.estado = 'CALIFICADO'
+            GROUP BY p.legajo ORDER BY cant DESC LIMIT 1
+        """, (f"{mes_busqueda}%",))
+        row_max = cur.fetchone()
+        max_del_mes = row_max['cant'] if row_max and row_max['cant'] > 0 else 1
 
-        datos['total_salidas'] = total_salidas
-        # El radar suele tener un tope (ej: 5.0) para no deformarse
-        datos['puntos_operativo'] = min(puntos_ope, 5.0) 
-        # Guardamos el real por si queremos mostrarlo en texto
-        datos['puntos_operativo_reales'] = puntos_ope
-
-        # FIRMAS PENDIENTES (Solo borradores del bombero)
+        # 2. Tus salidas (Sin filtro de estado para el cartel)
         cur.execute("""
-            SELECT COUNT(*) as total FROM actividades 
-            WHERE legajo = %s AND firma_bombero_fecha IS NULL AND anulada = 0
-        """, (legajo,))
-        datos['pendientes_firma_bombero'] = cur.fetchone()['total']
-
-        # 3. Historial para los botones de "Ver más"
-        cur.execute("""
-            SELECT *, fecha_inicio AS fecha, actividad AS tipo 
-            FROM actividades WHERE legajo = %s AND anulada = 0
-            ORDER BY fecha_inicio DESC, hora_inicio DESC LIMIT 20
-        """, (legajo,))
-        historial_raw = cur.fetchall()
-        
-        historial = []
-        for h in historial_raw:
-            if h.get('fecha_inicio'):
-                try:
-                    h['fecha_display'] = h['fecha_inicio'].strftime('%d/%m/%Y')
-                except:
-                    h['fecha_display'] = str(h['fecha_inicio'])
-            historial.append(h)
-
-        # --- AQUÍ EMPIEZA LA SUGERENCIA: INTEGRACIÓN DE SALIDAS ---
-        cur.execute("""
-            SELECT 
-                s.fecha as fecha, 
-                s.tipo_siniestro as tipo, 
-                CONCAT('Móvil: ', p.movil, ' - Rol: ', p.rol) as descripcion, 
-                p.puntos_operativos as horas,
-                s.fecha as fecha_inicio
-            FROM nexo_personal p
+            SELECT COUNT(p.id) as cant FROM nexo_personal p 
             JOIN nexo_siniestros s ON p.siniestro_id = s.id
-            WHERE p.legajo = %s AND s.estado = 'CALIFICADO'
-            ORDER BY s.fecha DESC LIMIT 10
-        """, (legajo,))
+            WHERE p.legajo = %s AND s.fecha LIKE %s
+        """, (legajo, f"{mes_actual}%"))
+        res_mias = cur.fetchone()
+        datos['total_salidas'] = res_mias['cant'] if res_mias else 0
         
-        intervenciones = cur.fetchall()
-        for i in intervenciones:
-            if i.get('fecha'):
-                try:
-                    i['fecha_display'] = i['fecha'].strftime('%d/%m/%Y')
-                except:
-                    i['fecha_display'] = str(i['fecha'])
-            historial.append(i)
+        # Cálculo para el diamante
+        pts_siniestros = (datos['total_salidas'] / max_del_mes) * 5
+        datos['pilar_asistencia'] = round((pts_clases + pts_siniestros) / 2, 2)
 
-        # Volvemos a ordenar la lista completa por fecha para que no queden las salidas todas al final
-        historial.sort(key=lambda x: x.get('fecha_inicio') if x.get('fecha_inicio') else x.get('fecha'), reverse=True)
-        # --- FIN DE LA SUGERENCIA ---
+        # --- CONSOLIDACIÓN ---
+        datos['puntaje_final'] = round(
+            datos['pilar_vocacion'] + datos['pilar_tecnica'] + 
+            datos['pilar_cualidades'] + datos['pilar_asistencia'], 2
+        )
+
+        # Calificación por letras
+        pf = datos['puntaje_final']
+        if pf >= 19: datos['calif_letra'], datos['calif_desc'] = "E", "EXCELENTE"
+        elif pf >= 16: datos['calif_letra'], datos['calif_desc'] = "MB", "MUY BUENO"
+        elif pf >= 10: datos['calif_letra'], datos['calif_desc'] = "B", "BUENO"
+        else: datos['calif_letra'], datos['calif_desc'] = "I", "INSUFICIENTE"
+
+        return datos, [] # Historial omitido para brevedad
 
     except Exception as e:
-        print(f"Error en el perfil: {e}")
-        return datos, [] 
-    
-    finally:
-        if 'cur' in locals():
-            cur.close()
-
-    return datos, historial
+        print(f"Error en perfil: {e}")
+        return datos, []
 
 @app.route("/ver-perfil/<int:legajo_id>")
 @rol_requerido('ADMIN', 'JEFATURA')
 def ver_perfil_ajeno(legajo_id):
     datos, historial = obtener_datos_completos_perfil(legajo_id)
+    
     if not datos:
         flash("No se encontró el legajo.", "warning")
         return redirect(url_for('inicio'))
-    return render_template("mi_perfil.html", datos=datos, historial=historial)
+    
+    # FILTRO: Limpiamos el historial de cualquier registro anulado
+    # Esto evita que los errores de carga o legajos 50000 sumen aquí
+    historial_filtrado = [h for h in historial if h.get('estado') != 'ANULADO']
+    
+    return render_template("mi_perfil.html", datos=datos, historial=historial_filtrado)
 
 @app.route("/mi-perfil")
 @login_requerido
 def mi_perfil():
     legajo = session.get("legajo")
     datos, historial = obtener_datos_completos_perfil(legajo)
+    
     if not datos:
         flash("Error al cargar tu perfil.", "danger")
         return redirect(url_for('inicio'))
-    return render_template("mi_perfil.html", datos=datos, historial=historial)
+    
+    # FILTRO: Solo dejamos los registros que NO estén anulados
+    # Esto limpia el historial de capacitaciones de registros 50000 o errores
+    historial_filtrado = [h for h in historial if h.get('estado') != 'ANULADO']
+    
+    return render_template("mi_perfil.html", datos=datos, historial=historial_filtrado)
 
 @app.route("/mesa-calificadora")
 @login_requerido
@@ -1503,67 +1505,177 @@ def mis_actividades():
     # Aquí es donde le "pasamos" la lista a la plantilla
     return render_template("actividades.html", actividades=lista_actividades)
 
+from datetime import datetime, date
+import calendar
+
+from datetime import datetime, date
+import calendar
+
 @app.route("/mis-capacitaciones")
 @login_requerido
 def mis_capacitaciones():
     legajo = session.get('legajo')
-    db = get_db()
-    if not db:
-        return "Error de conexión a la base de datos", 500
-        
-    try:
-        cur = db.cursor(dictionary=True)
-        cur.execute("""
-            SELECT *, fecha_inicio as fecha 
-            FROM actividades 
-            WHERE legajo = %s AND actividad IN ('PRÁCTICA', 'CAPACITACIÓN') AND anulada = 0
-            ORDER BY fecha_inicio DESC
-        """, (legajo,))
-        registros = cur.fetchall()
-        
-        # 1. PRIMERO HACEMOS LA SUMA
-        total_horas = sum(float(r['horas'] or 0) for r in registros)
-
-        # 2. DESPUÉS HACEMOS EL RETURN (enviando todas las variables)
-        return render_template("detalle_actividades.html", 
-                               titulo="Mis Capacitaciones", 
-                               registros=registros, 
-                               total_horas=total_horas)
     
-    finally:
-        cur.close()
-        db.close()
+    # 1. Traemos el dato tal cual está en la sesión
+    cargo_en_sesion = session.get('cargo')
+    
+    # 2. El PRINT para ver la verdad en la consola
+    print("\n" + "*"*50)
+    print(f"DEBUG SIAB - LEGAJO: {legajo}")
+    print(f"CARGO TRAÍDO: '{cargo_en_sesion}'")
+    print(f"TIPO DE DATO: {type(cargo_en_sesion)}")
+    print("*"*50 + "\n")
+
+    # 3. Procesamos para que sea robusto
+    cargo_usuario = str(cargo_en_sesion or "").upper().strip()
+
+    # 4. Lógica de detección (la que definimos antes)
+    es_jefe = any(v == cargo_usuario for v in ["JEFE", "JEFE C/A", "JEFE CUERPO ACTIVO"]) or \
+              ("JEFE" in cargo_usuario and not any(x in cargo_usuario for x in ["SUB", "2", "SEGUNDO"]))
+    
+    es_subjefe = any(x in cargo_usuario for x in ["SUBJEFE", "2º JEFE", "2° JEFE", "SEGUNDO JEFE", "2 JEFE"])
+
+    # 4. Otros cargos de Comisión Directiva
+    es_comision = any(x in cargo_usuario for x in ["PRESIDENTE", "COMISION", "DIRECTIVA", "TESORERO"])
+
+    # Variable maestra para mostrar la interfaz de gestión
+    es_jerarquico = es_jefe or es_subjefe or es_comision
+
+    hoy = date.today()
+    primer_dia = hoy.replace(day=1)
+    ultimo_dia = hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])
+    
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    
+# 1. Obtenemos los datos de la base de datos
+    cur.execute("""
+        SELECT e.fecha, e.descripcion as tema, a.calificacion, a.estado, a.observacion
+        FROM asistencia a
+        JOIN eventos e ON a.evento_id = e.id
+        WHERE a.legajo = %s 
+        AND e.tipo = 'CAPACITACION' 
+        AND e.estado != 'ANULADO'
+        AND e.fecha BETWEEN %s AND %s
+        ORDER BY e.fecha DESC
+    """, (legajo, primer_dia, ultimo_dia))
+    
+    registros = cur.fetchall()
+    
+    # 2. Cálculos generales (sirven para la tabla de totales al pie)
+    total = len(registros)
+    asistidas = len([r for r in registros if r['estado'] == 'PRESENTE'])
+    faltas = total - asistidas
+
+    # 3. Lógica según el rango (para los indicadores superiores)
+    if es_jerarquico:
+        promedio = None
+        # Para el Jefe, el cumplimiento es informativo o 100% simbólico
+        porcentaje = round((asistidas / total * 100), 1) if total > 0 else 100
+    else:
+        # Cálculos específicos para Cuerpo Activo (Notas y Ley 80%)
+        notas = [float(r['calificacion']) for r in registros 
+                if r['calificacion'] is not None and str(r['calificacion']).strip() != '']
+        
+        promedio = round(sum(notas) / len(notas), 2) if notas else 0
+        porcentaje = round((asistidas / total * 100), 1) if total > 0 else 0
+
+    # Referencia Año Anterior (2025)
+    cur.execute("""
+        SELECT AVG(NULLIF(a.calificacion, '')) as prom
+        FROM asistencia a
+        JOIN eventos e ON a.evento_id = e.id
+        WHERE a.legajo = %s AND e.tipo = 'CAPACITACION' 
+        AND e.estado = 'FINALIZADO' AND YEAR(e.fecha) = %s
+    """, (legajo, hoy.year - 1))
+    res_ant = cur.fetchone()
+    promedio_anterior = round(res_ant['prom'], 2) if res_ant and res_ant['prom'] else "N/A"
+
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+    return render_template("detalle_capacitaciones.html", 
+                           registros=registros, 
+                           promedio=promedio,
+                           promedio_anterior=promedio_anterior,
+                           porcentaje=porcentaje,
+                           total=total,
+                           asistidas=asistidas,
+                           faltas=faltas,
+                           mes_nombre=meses[hoy.month - 1],
+                           es_jerarquico=es_jerarquico,
+                           es_jefe=es_jefe,
+                           es_subjefe=es_subjefe)
+
+@app.route('/mis-salidas')
+@login_requerido
+def ver_mis_salidas():
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    
+    # Obtenemos el legajo del usuario logueado
+    mi_legajo = session.get('legajo') 
+
+    # 1. Ejecutamos la consulta
+    cur.execute("""
+        SELECT 
+            s.id, 
+            s.fecha, 
+            s.tipo_siniestro, 
+            s.nro_part_ruba,
+            p.rol, 
+            p.movil,
+            p.puntos_operativos
+        FROM nexo_siniestros s
+        JOIN nexo_personal p ON s.id = p.siniestro_id
+        WHERE p.legajo = %s
+        ORDER BY s.fecha DESC
+    """, (mi_legajo,))
+    
+    # 2. AHORA DEFINIMOS salidas_raw
+    salidas_raw = cur.fetchall()
+    
+    # 3. AHORA SÍ PODEMOS HACER EL PRINT
+    print(f"DEBUG: Se encontraron {len(salidas_raw)} salidas para el legajo {mi_legajo}")
+
+    # Procesamos las salidas (esto es lo que ya tenías)
+    salidas_procesadas = []
+    total_puntos = 0
+    
+    for s in salidas_raw:
+        # Por ahora todos los pesos son 1.0
+        s['puntaje_final'] = float(s['puntos_operativos'] or 0)
+        total_puntos += s['puntaje_final']
+        salidas_procesadas.append(s)
+
+    cur.close()
+    db.close()
+    
+    return render_template('mis_salidas.html', 
+                           salidas=salidas_procesadas, 
+                           total_puntos=total_puntos,
+                           cantidad_salidas=len(salidas_procesadas))
 
 @app.route("/mis-actividades-gestion")
 @login_requerido
 def mis_actividades_gestion():
     legajo = session.get('legajo')
     db = get_db()
-    if not db:
-        return "Error de conexión a la base de datos", 500
-        
-    try:
-        cur = db.cursor(dictionary=True)
-        cur.execute("""
-            SELECT *, fecha_inicio as fecha 
-            FROM actividades 
-            WHERE legajo = %s AND actividad NOT IN ('PRÁCTICA', 'CAPACITACIÓN') AND anulada = 0
-            ORDER BY fecha_inicio DESC
-        """, (legajo,))
-        registros = cur.fetchall()
+    cur = db.cursor(dictionary=True)
+    
+    # Solo horas de gestión y prácticas (Pilar Vocación)
+    cur.execute("""
+        SELECT fecha_inicio as fecha, actividad, descripcion, horas
+        FROM actividades 
+        WHERE legajo = %s AND actividad NOT IN ('CAPACITACIÓN_OBLIGATORIA') AND anulada = 0
+        ORDER BY fecha_inicio DESC
+    """, (legajo,))
+    registros = cur.fetchall()
+    total_horas = sum(float(r['horas'] or 0) for r in registros)
 
-        # 1. PRIMERO HACEMOS LA SUMA
-        total_horas = sum(float(r['horas'] or 0) for r in registros)
-
-        # 2. DESPUÉS HACEMOS EL RETURN
-        return render_template("detalle_actividades.html", 
-                               titulo="Gestión y Dedicación", 
-                               registros=registros, 
-                               total_horas=total_horas)
-
-    finally:
-        cur.close()
-        db.close()
+    return render_template("detalle_actividades.html", 
+                           registros=registros, 
+                           total_horas=total_horas)
 
 from datetime import datetime
 
@@ -1576,16 +1688,36 @@ def nueva_planilla_nexo():
     if request.method == 'POST':
         try:
             nro_parte = request.form.get('nro_parte')
-            tipo = request.form.get('tipo_siniestro')
+            # Ahora recibimos el ID del mapeo
+            tipo_mapeo_id = request.form.get('tipo_siniestro_id') 
             lugar = request.form.get('lugar')
             fecha = request.form.get('fecha') 
             hora = request.form.get('hora_salida')
 
+            # BUSCAMOS LOS DATOS DEL RUBA ANTES DE GUARDAR
+            cur.execute("SELECT * FROM tipos_siniestros WHERE id = %s", (tipo_mapeo_id,))
+            mapeo = cur.fetchone()
+
+            if not mapeo:
+                raise Exception("Tipo de siniestro no válido")
+
+            # INSERTAMOS EN LA TABLA DE SALIDAS (Agregando los campos RUBA)
+            # Asegúrate de haber agregado las columnas grupo_ruba y subtipo_ruba a tu tabla
             sql_siniestro = """
-                INSERT INTO nexo_siniestros (nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado)
-                VALUES (%s, %s, %s, %s, %s, 'BORRADOR')
+                INSERT INTO nexo_siniestros 
+                (nro_part_ruba, fecha, hora_salida, tipo_siniestro, grupo_ruba, subtipo_ruba, lugar, estado)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'BORRADOR')
             """
-            cur.execute(sql_siniestro, (nro_parte, fecha, hora, tipo, lugar))
+            cur.execute(sql_siniestro, (
+                nro_parte, 
+                fecha, 
+                hora, 
+                mapeo['nombre_siab'],   # Detalle SIAB
+                mapeo['grupo_ruba'],    # Grupo RUBA (Ej: Incendios)
+                mapeo['subtipo_ruba'],  # Subtipo RUBA (Ej: Forestal)
+                lugar
+            ))
+            
             siniestro_id = cur.lastrowid
 
             bomberos_seleccionados = request.form.getlist('bomberos_seleccionados')
@@ -1596,37 +1728,43 @@ def nueva_planilla_nexo():
                             (siniestro_id, legajo, movil, rol))
 
             db.commit()
-            flash(f"Registro #{siniestro_id} guardado.", "success")
+            flash(f"Registro #{siniestro_id} guardado con éxito.", "success")
             return redirect(url_for('listado_siniestros'))
+            
         except Exception as e:
             db.rollback()
             print(f"Error al guardar: {e}")
-            flash("Error al guardar.", "danger")
+            flash(f"Error al guardar: {str(e)}", "danger")
             return redirect(url_for('nueva_planilla_nexo'))
 
     # --- MÉTODO GET: CARGA DE FORMULARIO ---
-    # Usamos LIKE para que si hay espacios locos o caracteres raros, los encuentre igual
+    
+    # 1. Cargamos los tipos de siniestros mapeados (IMPORTANTE: incluir grupo_ruba y el ORDER BY)
+    cur.execute("""
+        SELECT id, nombre_siab, grupo_ruba 
+        FROM tipos_siniestros 
+        ORDER BY grupo_ruba ASC, nombre_siab ASC
+    """)
+    res_tipos = cur.fetchall()
+
+    # 2. Cargamos el personal (el resto sigue igual)
     cur.execute("""
         SELECT legajo, nombre, apellido, situacion 
         FROM legajos 
-        WHERE situacion LIKE '%ACTIVO%' 
-           OR situacion LIKE '%RESERVA%'
+        WHERE situacion LIKE '%ACTIVO%' OR situacion LIKE '%RESERVA%'
         ORDER BY apellido ASC
     """)
     res_bomberos = cur.fetchall()
     
-    # DEBUG: Esto te dirá en la consola negra cuántos cargó realmente
-    print(f"DEBUG SIAB: Enviando {len(res_bomberos)} bomberos al HTML")
-
     fecha_hoy = datetime.now().strftime('%Y-%m-%d')
     hora_hoy = datetime.now().strftime('%H:%M')
     
     cur.close()
     db.close()
     
-    # IMPORTANTE: El nombre a la IZQUIERDA del igual debe ser 'bomberos'
     return render_template('nexo_form.html', 
                            bomberos=res_bomberos, 
+                           tipos_siniestros=res_tipos, # <-- Pasamos los tipos al HTML
                            fecha_hoy=fecha_hoy, 
                            hora_hoy=hora_hoy)
     
@@ -1732,10 +1870,9 @@ def ruta_imprimir_nexo(id):
     
     return send_file(file_path, as_attachment=False)
 
-@app.route('/registro-salidas/calificar/<int:id>')
+@app.route('/registro-salidas/calificar/<int:id>', methods=['GET', 'POST']) # Agregado methods
 @login_requerido
 def calificar_salida(id):
-    # Verificamos si el rol tiene permiso
     rol_usuario = session.get('rol')
     permisos_autorizados = ['ADMIN', 'ENCARGADO', 'SUPERVISOR']
 
@@ -1747,38 +1884,51 @@ def calificar_salida(id):
     cur = db.cursor(dictionary=True)
 
     if request.method == 'POST':
-        # 1. Recibimos los puntos de cada bombero
-        # El formulario enviará un diccionario con legajo: puntaje
-        for legajo in request.form.getlist('legajos'):
-            puntos = request.form.get(f'puntos_{legajo}')
+        try:
+            legajos = request.form.getlist('legajos')
+            # Capturamos el comentario general que agregaste abajo
+            comentario_general = request.form.get('observaciones')
             
-            # Actualizamos la tabla nexo_personal
+            for legajo in legajos:
+                # Buscamos el puntaje específico de cada legajo
+                puntos = request.form.get(f'puntos_{legajo}')
+                
+                cur.execute("""
+                    UPDATE nexo_personal 
+                    SET puntos_operativos = %s 
+                    WHERE siniestro_id = %s AND legajo = %s
+                """, (puntos, id, legajo))
+
+            # Cerramos el siniestro y guardamos la observación general
             cur.execute("""
-                UPDATE nexo_personal 
-                SET puntos_operativos = %s 
-                WHERE siniestro_id = %s AND legajo = %s
-            """, (puntos, id, legajo))
+                UPDATE nexo_siniestros 
+                SET estado = 'CALIFICADO', 
+                    comentario_general = %s 
+                WHERE id = %s
+            """, (comentario_general, id))
 
-        # 2. Marcamos el siniestro como CALIFICADO
-        cur.execute("UPDATE nexo_siniestros SET estado = 'CALIFICADO' WHERE id = %s", (id,))
-        
-        db.commit()
-        flash("Puntajes asignados correctamente. El radar de los bomberos ha sido actualizado.", "success")
-        return redirect(url_for('listado_siniestros'))
+            db.commit()
+            flash("Calificación guardada. El personal ha recibido sus puntos operativos.", "success")
+            return redirect(url_for('listado_siniestros'))
+        except Exception as e:
+            db.rollback()
+            flash(f"Error al procesar puntos: {e}", "danger")
 
-    # GET: Datos para la pantalla
+    # --- MÉTODO GET ---
     cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
     siniestro = cur.fetchone()
 
+    # Ajustado para que use tu tabla 'legajos'
     cur.execute("""
-        SELECT p.*, b.apellido, b.nombre 
+        SELECT p.*, l.apellido, l.nombre 
         FROM nexo_personal p
-        JOIN bomberos b ON p.legajo = b.legajo
+        JOIN legajos l ON p.legajo = l.legajo
         WHERE p.siniestro_id = %s
     """, (id,))
     personal = cur.fetchall()
 
-    return render_template('nexo_calificar.html', siniestro=siniestro, personal=personal)        
+    cur.close()
+    return render_template('nexo_calificar.html', siniestro=siniestro, personal=personal)     
 
 @app.route('/admin/backup')
 def ejecutar_backup():

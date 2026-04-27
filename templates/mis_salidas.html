@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block contenido %} <style>
+    /* Estética tipo App Móvil */
+    .chat-list {
+        background-color: #f8f9fa;
+        min-height: 80vh;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .chat-item {
+        background: white;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.2s;
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        text-decoration: none !important;
+        color: inherit !important;
+    }
+    .chat-item:active {
+        background-color: #f2f2f2;
+    }
+    .icon-circle {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        flex-shrink: 0;
+    }
+    /* Colores por tipo de siniestro */
+    .bg-fire { background-color: #ffe5e5; color: #d9534f; }
+    .bg-rescue { background-color: #fff4e5; color: #f0ad4e; }
+    .bg-service { background-color: #e5f1ff; color: #0275d8; }
+
+    .chat-content { flex-grow: 1; min-width: 0; }
+    .chat-header { display: flex; justify-content: space-between; align-items: baseline; }
+    .chat-title { font-weight: bold; font-size: 1.05rem; margin: 0; color: #212529; }
+    .chat-time { font-size: 0.75rem; color: #888; }
+    .chat-sub { font-size: 0.88rem; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .chat-meta { display: flex; align-items: center; margin-top: 6px; }
+    .badge-points { font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; background: #f0f0f0; font-weight: 600; }
+    
+    .header-app {
+        background: #212529;
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+    }
+</style>
+
+<div class="card shadow-sm border-0 chat-list">
+    <div class="header-app">
+        <a href="{{ url_for('mi_perfil') }}" class="text-white me-3 text-decoration-none">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <div>
+            <h5 class="mb-0">Historial de Salidas</h5>
+            <small class="text-white-50">Legajo #{{ session.get('legajo', '---') }}</small>
+        </div>
+        <div class="ms-auto text-end">
+            <span class="badge bg-danger">{{ cantidad_salidas }}</span>
+        </div>
+       </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>Mis Salidas</h4>
+            <a href="{{ url_for('mi_perfil') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Legajo
+            </a>
+        </div> 
+    {% for s in salidas %}
+    <div class="chat-item">
+        {% set tipo = s.tipo_siniestro.upper() %}
+        <div class="icon-circle {% if 'INCENDIO' in tipo %}bg-fire{% elif 'ACCIDENTE' in tipo or 'RESCATE' in tipo %}bg-rescue{% else %}bg-service{% endif %}">
+            <i class="fas {% if 'INCENDIO' in tipo %}fa-fire{% elif 'ACCIDENTE' in tipo or 'RESCATE' in tipo %}fa-car-crash{% else %}fa-info-circle{% endif %} fa-lg"></i>
+        </div>
+
+        <div class="chat-content">
+            <div class="chat-header">
+                <p class="chat-title">{{ s.tipo_siniestro }}</p>
+                <span class="chat-time">{{ s.fecha.strftime('%d/%m/%Y') if s.fecha else '--/--/--' }}</span>
+            </div>
+            <div class="chat-sub">
+                <strong>RUBA #{{ s.nro_part_ruba }}</strong> • {{ s.rol }}
+            </div>
+            <div class="chat-meta">
+                <small class="text-muted"><i class="fas fa-truck-moving me-1"></i> Móvil: {{ s.movil }}</small>
+                <span class="ms-auto badge-points text-danger">+{{ s.puntaje_final }} pts</span>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-folder-open fa-3x text-light mb-3"></i>
+        <p class="text-muted">No se encontraron intervenciones registradas.</p>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}

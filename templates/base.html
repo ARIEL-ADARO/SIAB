@@ -124,16 +124,17 @@
             </a>
 
             <div class="sidebar-section">Formación Obligatoria</div>
+
             {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
                 <a class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}" href="{{ url_for('asistencia') }}">
                     <i class="bi bi-check2-square"></i> Tomar Asistencia
                 </a>
             {% endif %}
-            
-            <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
-                <i class="bi bi-book"></i> Capacitaciones
-            </a>
 
+            <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
+                <i class="bi bi-clock-history"></i> Historial de Asistencia
+            </a>
+            
             <div class="sidebar-section">Perfeccionamiento</div>
             <a href="{{ url_for('cursos') }}" class="nav-link {% if request.endpoint == 'cursos' %}active{% endif %}">
                 <i class="bi bi-award"></i> Cursos (Dictados/Recibidos)
@@ -183,10 +184,8 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            <div class="col-lg-10 col-md-9 main-content">
-                {% block contenido %}
-                {% endblock %}
-            </div>
+               
+                {% block contenido %}{% endblock %}
         </div>
     </div>
 </div>
