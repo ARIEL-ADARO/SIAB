@@ -90,18 +90,15 @@
             <div class="text-center py-4 mb-3 border-bottom bg-dark bg-opacity-25">
                 <img src="{{ url_for('static', filename='fotos/' + session.get('foto', 'default.png')) }}" 
                     class="rounded-circle shadow-sm border border-2 border-white mb-2" 
-                    style="width: 85px; height: 85px; object-fit: cover;" 
-                    alt="Foto">
+                    style="width: 85px; height: 85px; object-fit: cover;">
                 
                 <div class="px-3">
-                    <small class="text-danger fw-bold d-block text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">
+                    <small class="text-danger fw-bold d-block text-uppercase" style="font-size: 0.65rem;">
                         {{ session.get('grado') | default('BOMBERO', true) }}
                     </small>
-                    <div class="fw-bold text-white mb-3" style="font-size: 0.9rem; line-height: 1.2;">
-                        {{ session.get('apellido') | default('', true) }}<br>
-                        {{ session.get('nombre') | default('', true) }}
+                    <div class="fw-bold text-white mb-3" style="font-size: 0.9rem;">
+                        {{ session.get('apellido', '') }}<br>{{ session.get('nombre', '') }}
                     </div>
-
                     <a href="{{ url_for('mi_perfil') }}" class="btn btn-danger btn-danger-llamativo w-100 py-2 shadow-sm text-uppercase" style="font-size: 0.7rem;">
                         <i class="bi bi-person-badge me-1"></i> Mi Legajo Digital
                     </a>
@@ -114,60 +111,52 @@
             </a>
 
             <div class="sidebar-section">Gestión Operativa</div>
-
             <a href="{{ url_for('nueva_planilla_nexo') }}" class="nav-link text-warning fw-bold">
                 <i class="bi bi-megaphone"></i> CARGAR SALIDA
             </a>
-
             <a href="{{ url_for('listado_siniestros') }}" class="nav-link {% if request.endpoint == 'listado_siniestros' %}active{% endif %}">
                 <i class="bi bi-journal-text"></i> Registro de Salidas
             </a>
+            <a href="#" class="nav-link text-white-50"><i class="bi bi-calendar-event"></i> Eventos</a>
+            <a href="#" class="nav-link text-white-50"><i class="bi bi-clipboard-check"></i> Novedades</a>
 
-            <div class="sidebar-section">Formación Obligatoria</div>
-
-            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
+            <div class="sidebar-section">Formación y Cursos</div>
+            {% if session.get('rol') in ['ADMIN', 'SUPERVISOR'] or session.get('grado') in ['JEFATURA', 'OFICIAL'] %}
                 <a class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}" href="{{ url_for('asistencia') }}">
                     <i class="bi bi-check2-square"></i> Tomar Asistencia
                 </a>
             {% endif %}
-
             <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
                 <i class="bi bi-clock-history"></i> Historial de Asistencia
             </a>
-            
-            <div class="sidebar-section">Perfeccionamiento</div>
             <a href="{{ url_for('cursos') }}" class="nav-link {% if request.endpoint == 'cursos' %}active{% endif %}">
                 <i class="bi bi-award"></i> Cursos (Dictados/Recibidos)
             </a>
 
-            <div class="sidebar-section">Gestión Operativa</div>
-            <a href="{{ url_for('listado_actividades') }}" class="nav-link {% if request.endpoint == 'listado_actividades' %}active{% endif %}">
-                <i class="bi bi-calendar-check"></i> Actividades de Cuartel
-            </a> 
-
+            <div class="sidebar-section">Institucional</div>
             <a href="{{ url_for('departamentos') }}" class="nav-link {% if request.endpoint == 'departamentos' %}active{% endif %}">
                 <i class="bi bi-diagram-3"></i> Departamentos
             </a>
-
-            <div class="sidebar-section">Personal</div>
             <a href="{{ url_for('bomberos') }}" class="nav-link {% if request.endpoint == 'bomberos' %}active{% endif %}">
                 <i class="bi bi-people"></i> Listado de Legajos
             </a>
 
-            {% if session.get('rol') in ['ADMIN', 'JEFATURA'] %}
-            <a href="{{ url_for('reporte_actividad') }}" class="nav-link {% if request.endpoint == 'reporte_actividad' %}active{% endif %} text-info">
-                <i class="bi bi-bar-chart-line"></i> Estadísticas Rendimiento
-            </a>
+            {% if session.get('rol') == 'ADMIN' or session.get('grado') in ['JEFATURA', 'OFICIAL'] %}
+                <div class="sidebar-section">Panel de Control</div>
+                <a href="{{ url_for('reporte_actividad') }}" class="nav-link {% if request.endpoint == 'reporte_actividad' %}active{% endif %} text-info">
+                    <i class="bi bi-bar-chart-line"></i> Estadísticas Rendimiento
+                </a>
+                <a href="{{ url_for('listado_actividades') }}" class="nav-link {% if request.endpoint == 'listado_actividades' %}active{% endif %}">
+                    <i class="bi bi-calendar-check"></i> Gestión de Actividades
+                </a>
             {% endif %}
 
             {% if session.get('rol') == 'ADMIN' %}
-                <div class="sidebar-section">Configuración</div>
+                <div class="sidebar-section">Configuración Sistema</div>
                 <a href="{{ url_for('config_puntos') }}" class="nav-link {% if request.endpoint == 'config_puntos' %}active{% endif %}">
                     <i class="bi bi-gear"></i> Sistema de Puntos
                 </a>
-                <a href="{{ url_for('ejecutar_backup') }}" 
-                   class="nav-link text-warning fw-bold" 
-                   onclick="return confirm('¿Desea generar una copia de seguridad?')">
+                <a href="{{ url_for('ejecutar_backup') }}" class="nav-link text-warning fw-bold" onclick="return confirm('¿Backup?')">
                     <i class="bi bi-database-down"></i> Respaldo SQL
                 </a>
             {% endif %}

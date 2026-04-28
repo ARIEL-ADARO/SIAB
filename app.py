@@ -1137,68 +1137,57 @@ def obtener_datos_completos_perfil(legajo):
         'calif_letra': '---', 'calif_desc': 'SIN CALIFICAR',
         'grado': '---', 'cargo': 'Sin asignar', 'situacion': '---', 'email': 'N/A',
         'clases_conteo': 0, 'total_salidas': 0,
-        'horas_actividad_reales': 0.0, 'puntos_actividad': 0.0 # <--- Aseguramos estas
+        'horas_actividad_reales': 0.0, 'puntos_actividad': 0.0,
+        'promedio_general': 0.0
     }
 
-    if not conn: return datos, []
+    if not conn: 
+        print("❌ ERROR: No hay conexión a la base de datos")
+        return datos, []
 
     try:
         cur = conn.cursor(dictionary=True)
         from datetime import datetime
         mes_actual = datetime.now().strftime('%Y-%m')
-
-        # --- DATOS PERSONALES ---
-        cur.execute("SELECT apellido, nombre, grado, cargo, situacion, email FROM legajos WHERE legajo = %s", (legajo,))
-        perfil = cur.fetchone()
-        if perfil: datos.update(perfil)
-
-        # --- PILAR 1: VOCACIÓN ---
-        cur.execute("""
-            SELECT (
-                (SELECT COALESCE(SUM(horas), 0) FROM actividades 
-                 WHERE legajo = %s AND anulada = 0 
-                 AND actividad NOT IN ('CAPACITACIÓN', 'CLASE OBLIGATORIA', 'PRÁCTICA')) +
-                (SELECT COALESCE(SUM(horas_servicio), 0) FROM nexo_servicios 
-                 WHERE legajo = %s AND estado = 'FINALIZADO')
-            ) as total""", (legajo, legajo))
-        res_voc = cur.fetchone()
-        h_total = float(res_voc['total'] or 0)
         
-        datos['horas_actividad_reales'] = h_total
-        datos['puntos_actividad'] = round(min((h_total / 10) * 5, 5.0), 2)
-        datos['pilar_vocacion'] = datos['puntos_actividad'] # Sincronizamos para el diamante
+        print(f"\n--- DEBUG PERFIL LEGAJO: {legajo} (Mes: {mes_actual}) ---")
 
-        # --- PILAR 2: CAPACIDAD TÉCNICA ---
-        cur.execute("""
-            SELECT COALESCE(SUM(horas), 0) as pts FROM actividades 
-            WHERE legajo = %s AND actividad = 'PRÁCTICA' AND anulada = 0
-        """, (legajo,))
-        datos['pilar_tecnica'] = round(min(float(cur.fetchone()['pts'] or 0), 5.0), 2)
+        # --- 1. DATOS PERSONALES ---
+        cur.execute("SELECT apellido, nombre, grado, cargo, situacion FROM legajos WHERE legajo = %s", (legajo,))
+        perfil = cur.fetchone()
+        if perfil:
+            datos.update(perfil)
+            print(f"✅ Perfil encontrado: {perfil['apellido']}, {perfil['nombre']}")
 
-        # --- PILAR 3: CUALIDADES ---
-        cur.execute("SELECT nota_concepto FROM nexo_mesa_calificadora WHERE legajo = %s ORDER BY fecha_carga DESC LIMIT 1", (legajo,))
-        res_mesa = cur.fetchone()
-        datos['pilar_cualidades'] = round(float(res_mesa['nota_concepto'] or 0) / 2, 2) if res_mesa else 0.0
+        # --- 2. REGISTROS DE ASISTENCIA (EL CORAZÓN DEL PROBLEMA) ---
+        query_asistencia = """
+            SELECT a.estado, a.calificacion 
+            FROM asistencia a 
+            JOIN eventos e ON a.evento_id = e.id 
+            WHERE a.legajo = %s AND e.fecha LIKE %s AND e.estado = 'FINALIZADO'
+        """
+        cur.execute(query_asistencia, (legajo, f"{mes_actual}%"))
+        registros = cur.fetchall()
+        
+        print(f"📊 Registros encontrados: {len(registros)}")
+        for i, r in enumerate(registros):
+            print(f"   -> Evento {i+1}: Estado={r['estado']}, Nota={r['calificacion']}")
 
-        # --- PILAR 4: ASISTENCIA ---
-        # Clases
-        cur.execute("SELECT COUNT(*) as cant FROM asistencia WHERE legajo=%s AND estado='PRESENTE' AND fecha_registro LIKE %s", (legajo, f"%{mes_busqueda}"))
-        res_clases = cur.fetchone()
-        datos['clases_conteo'] = res_clases['cant'] if res_clases else 0
-        pts_clases = min(datos['clases_conteo'] * 2.5, 5.0)
+        total_clases = len(registros)
+        asistidas = len([r for r in registros if r['estado'] == 'PRESENTE'])
+        
+        # --- 3. CÁLCULO DE PUNTOS CLASES ---
+        pts_clases = (asistidas / total_clases * 5) if total_clases > 0 else 0.0
+        print(f"⭐ Puntos Clases: {pts_clases} (Asistió {asistidas} de {total_clases})")
 
-        # Siniestros
-        # 1. Buscamos el máximo del mes (Solo calificados para la competencia)
-        cur.execute("""
-            SELECT COUNT(p.id) as cant FROM nexo_personal p 
-            JOIN nexo_siniestros s ON p.siniestro_id = s.id
-            WHERE s.fecha LIKE %s AND s.estado = 'CALIFICADO'
-            GROUP BY p.legajo ORDER BY cant DESC LIMIT 1
-        """, (f"{mes_busqueda}%",))
-        row_max = cur.fetchone()
-        max_del_mes = row_max['cant'] if row_max and row_max['cant'] > 0 else 1
+        # --- 4. PROMEDIO DE NOTAS ---
+        notas = [float(r['calificacion']) for r in registros 
+                 if r.get('calificacion') is not None and str(r['calificacion']).strip() != '']
+        
+        datos['promedio_general'] = round(sum(notas) / len(notas), 2) if notas else 0.0
+        print(f"📝 Notas extraídas: {notas} -> Promedio: {datos['promedio_general']}")
 
-        # 2. Tus salidas (Sin filtro de estado para el cartel)
+        # --- 5. SINIESTROS ---
         cur.execute("""
             SELECT COUNT(p.id) as cant FROM nexo_personal p 
             JOIN nexo_siniestros s ON p.siniestro_id = s.id
@@ -1206,30 +1195,29 @@ def obtener_datos_completos_perfil(legajo):
         """, (legajo, f"{mes_actual}%"))
         res_mias = cur.fetchone()
         datos['total_salidas'] = res_mias['cant'] if res_mias else 0
-        
-        # Cálculo para el diamante
-        pts_siniestros = (datos['total_salidas'] / max_del_mes) * 5
-        datos['pilar_asistencia'] = round((pts_clases + pts_siniestros) / 2, 2)
+        print(f"🚒 Salidas del mes: {datos['total_salidas']}")
 
-        # --- CONSOLIDACIÓN ---
+        # Forzamos pilar asistencia para el diamante
+        pts_siniestros = 0.0 # Simplificado para el debug
+        datos['pilar_asistencia'] = round((pts_clases + pts_siniestros) / 2, 2)
+        print(f"💎 Pilar Asistencia (Diamante): {datos['pilar_asistencia']}")
+
+        # --- 6. CONSOLIDACIÓN ---
         datos['puntaje_final'] = round(
             datos['pilar_vocacion'] + datos['pilar_tecnica'] + 
             datos['pilar_cualidades'] + datos['pilar_asistencia'], 2
         )
+        print(f"🏆 Puntaje Final: {datos['puntaje_final']}")
+        print("-------------------------------------------\n")
 
-        # Calificación por letras
-        pf = datos['puntaje_final']
-        if pf >= 19: datos['calif_letra'], datos['calif_desc'] = "E", "EXCELENTE"
-        elif pf >= 16: datos['calif_letra'], datos['calif_desc'] = "MB", "MUY BUENO"
-        elif pf >= 10: datos['calif_letra'], datos['calif_desc'] = "B", "BUENO"
-        else: datos['calif_letra'], datos['calif_desc'] = "I", "INSUFICIENTE"
-
-        return datos, [] # Historial omitido para brevedad
+        return datos, registros
 
     except Exception as e:
-        print(f"Error en perfil: {e}")
+        import traceback
+        print(f"❌ ERROR CRÍTICO: {str(e)}")
+        traceback.print_exc() # Esto te dirá la línea exacta del error
         return datos, []
-
+    
 @app.route("/ver-perfil/<int:legajo_id>")
 @rol_requerido('ADMIN', 'JEFATURA')
 def ver_perfil_ajeno(legajo_id):
@@ -1245,21 +1233,63 @@ def ver_perfil_ajeno(legajo_id):
     
     return render_template("mi_perfil.html", datos=datos, historial=historial_filtrado)
 
-@app.route("/mi-perfil")
+@app.route("/mi_perfil")
 @login_requerido
 def mi_perfil():
-    legajo = session.get("legajo")
-    datos, historial = obtener_datos_completos_perfil(legajo)
+    legajo = session.get('legajo')
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # --- DATOS PARA AUDITORÍA (Los 7 puntos) ---
     
-    if not datos:
-        flash("Error al cargar tu perfil.", "danger")
-        return redirect(url_for('inicio'))
+    # A. Vocación: SIAB vs RUBA
+    # Aquí traerías las sumas de horas de tus tablas de actividades
+    vocacion_siab_hs = 12.5  # Ejemplo: Suma de tabla actividades local
+    vocacion_ruba_hs = 8.0   # Ejemplo: Suma de tabla servicios nexo
     
-    # FILTRO: Solo dejamos los registros que NO estén anulados
-    # Esto limpia el historial de capacitaciones de registros 50000 o errores
-    historial_filtrado = [h for h in historial if h.get('estado') != 'ANULADO']
+    # B. Siniestros: Cálculo de Tope y Puntos (Punto 7)
+    cur.execute("""
+        SELECT COUNT(p.id) as cant 
+        FROM nexo_personal p 
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id
+        WHERE s.fecha LIKE %s
+        GROUP BY p.legajo 
+        ORDER BY cant DESC LIMIT 1
+    """, (mes_busqueda,))
+    res_max = cur.fetchone()
+    max_cuartel = res_max['cant'] if res_max else 1
     
-    return render_template("mi_perfil.html", datos=datos, historial=historial_filtrado)
+    cur.execute("""
+        SELECT COUNT(p.id) as cant 
+        FROM nexo_personal p
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id
+        WHERE p.legajo = %s AND s.fecha LIKE %s
+    """, (legajo, mes_busqueda))
+
+    mis_salidas = cur.fetchone()['cant']
+
+    # C. Calificaciones de Emergencia (Punto 3 - Sin nombres)
+    cur.execute("""
+        SELECT p.calificacion, s.tipo_incidente, s.fecha, p.observaciones
+        FROM nexo_personal p
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id
+        WHERE p.legajo = %s
+        ORDER BY s.fecha DESC LIMIT 5
+    """, (legajo,))
+    ultimas_calificaciones = cur.fetchall()
+
+    # --- DICCIONARIO DE DATOS FINAL ---
+    datos = {
+        'vocacion_siab_hs': vocacion_siab_hs,
+        'vocacion_ruba_hs': vocacion_ruba_hs,
+        'total_salidas': mis_salidas,
+        'siniestros_max_cuartel': max_cuartel,
+        'siniestros_puntos_puros': puntos_siniestros,
+        'calificaciones_emergencia': ultimas_calificaciones,
+        # ... (sumar aquí los promedios académicos y mesa calificadora)
+    }
+
+    return render_template("mi_perfil.html", datos=datos)
 
 @app.route("/mesa-calificadora")
 @login_requerido
@@ -1515,40 +1545,26 @@ import calendar
 @login_requerido
 def mis_capacitaciones():
     legajo = session.get('legajo')
+    rol_usuario = session.get('rol')
     
-    # 1. Traemos el dato tal cual está en la sesión
-    cargo_en_sesion = session.get('cargo')
-    
-    # 2. El PRINT para ver la verdad en la consola
-    print("\n" + "*"*50)
-    print(f"DEBUG SIAB - LEGAJO: {legajo}")
-    print(f"CARGO TRAÍDO: '{cargo_en_sesion}'")
-    print(f"TIPO DE DATO: {type(cargo_en_sesion)}")
-    print("*"*50 + "\n")
-
-    # 3. Procesamos para que sea robusto
-    cargo_usuario = str(cargo_en_sesion or "").upper().strip()
-
-    # 4. Lógica de detección (la que definimos antes)
-    es_jefe = any(v == cargo_usuario for v in ["JEFE", "JEFE C/A", "JEFE CUERPO ACTIVO"]) or \
-              ("JEFE" in cargo_usuario and not any(x in cargo_usuario for x in ["SUB", "2", "SEGUNDO"]))
-    
-    es_subjefe = any(x in cargo_usuario for x in ["SUBJEFE", "2º JEFE", "2° JEFE", "SEGUNDO JEFE", "2 JEFE"])
-
-    # 4. Otros cargos de Comisión Directiva
-    es_comision = any(x in cargo_usuario for x in ["PRESIDENTE", "COMISION", "DIRECTIVA", "TESORERO"])
-
-    # Variable maestra para mostrar la interfaz de gestión
-    es_jerarquico = es_jefe or es_subjefe or es_comision
-
     hoy = date.today()
-    primer_dia = hoy.replace(day=1)
-    ultimo_dia = hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])
-    
+    anio_actual = hoy.year
+    anio_anterior = anio_actual - 1
+
     db = get_db()
     cur = db.cursor(dictionary=True)
-    
-# 1. Obtenemos los datos de la base de datos
+
+    # A. TOTAL QUE DICTÓ EL CUARTEL (El denominador)
+    cur.execute("""
+        SELECT COUNT(*) as total 
+        FROM eventos 
+        WHERE tipo = 'CAPACITACION' 
+        AND estado = 'FINALIZADO' 
+        AND YEAR(fecha) = %s
+    """, (anio_actual,))
+    total_dictadas = cur.fetchone()['total'] or 0
+
+    # B. LISTADO DE ASISTENCIAS DEL BOMBERO (Para la tabla)
     cur.execute("""
         SELECT e.fecha, e.descripcion as tema, a.calificacion, a.estado, a.observacion
         FROM asistencia a
@@ -1556,56 +1572,36 @@ def mis_capacitaciones():
         WHERE a.legajo = %s 
         AND e.tipo = 'CAPACITACION' 
         AND e.estado != 'ANULADO'
-        AND e.fecha BETWEEN %s AND %s
+        AND YEAR(e.fecha) = %s
         ORDER BY e.fecha DESC
-    """, (legajo, primer_dia, ultimo_dia))
-    
+    """, (legajo, anio_actual))
     registros = cur.fetchall()
-    
-    # 2. Cálculos generales (sirven para la tabla de totales al pie)
-    total = len(registros)
+
+    # C. CÁLCULO DE PORCENTAJE
     asistidas = len([r for r in registros if r['estado'] == 'PRESENTE'])
-    faltas = total - asistidas
+    porcentaje = round((asistidas / total_dictadas * 100), 1) if total_dictadas > 0 else 0
 
-    # 3. Lógica según el rango (para los indicadores superiores)
-    if es_jerarquico:
-        promedio = None
-        # Para el Jefe, el cumplimiento es informativo o 100% simbólico
-        porcentaje = round((asistidas / total * 100), 1) if total > 0 else 100
-    else:
-        # Cálculos específicos para Cuerpo Activo (Notas y Ley 80%)
-        notas = [float(r['calificacion']) for r in registros 
-                if r['calificacion'] is not None and str(r['calificacion']).strip() != '']
-        
-        promedio = round(sum(notas) / len(notas), 2) if notas else 0
-        porcentaje = round((asistidas / total * 100), 1) if total > 0 else 0
-
-    # Referencia Año Anterior (2025)
+    # D. RENDIMIENTO AÑO ANTERIOR
     cur.execute("""
-        SELECT AVG(NULLIF(a.calificacion, '')) as prom
+        SELECT 
+            COUNT(*) as total_ant,
+            SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as asistidas_ant
         FROM asistencia a
         JOIN eventos e ON a.evento_id = e.id
         WHERE a.legajo = %s AND e.tipo = 'CAPACITACION' 
         AND e.estado = 'FINALIZADO' AND YEAR(e.fecha) = %s
-    """, (legajo, hoy.year - 1))
+    """, (legajo, anio_anterior))
     res_ant = cur.fetchone()
-    promedio_anterior = round(res_ant['prom'], 2) if res_ant and res_ant['prom'] else "N/A"
-
-    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
-             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    
+    porcentaje_anterior = round((res_ant['asistidas_ant'] / res_ant['total_ant'] * 100), 1) if res_ant and res_ant['total_ant'] > 0 else "N/A"
 
     return render_template("detalle_capacitaciones.html", 
                            registros=registros, 
-                           promedio=promedio,
-                           promedio_anterior=promedio_anterior,
                            porcentaje=porcentaje,
-                           total=total,
+                           porcentaje_anterior=porcentaje_anterior,
+                           total_dictadas=total_dictadas,
                            asistidas=asistidas,
-                           faltas=faltas,
-                           mes_nombre=meses[hoy.month - 1],
-                           es_jerarquico=es_jerarquico,
-                           es_jefe=es_jefe,
-                           es_subjefe=es_subjefe)
+                           anio_actual=anio_actual)
 
 @app.route('/mis-salidas')
 @login_requerido

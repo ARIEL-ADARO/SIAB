@@ -1,0 +1,21 @@
+SIAB - HOJA DE RUTA: LEGAJO DIGITAL AUDITABLE
+=============================================
+META: Que el bombero comprenda su diamante de puntos (0-20).
+
+PILAR 1: VOCACIÓN
+- Botón 1 (Actividades): Horas cargadas en SIAB LOCAL (Mantenimiento/Guardia).
+- Botón 2 (Servicios): Horas cargadas en RUBA/NEXO (Eventos/Prevenciones).
+
+PILAR 2: CAPACIDAD TÉCNICA
+- Botón 3 (Calif. Emergencia): Notas del Jefe de Dotación (SIN NOMBRE DEL JEFE).
+- Botón 4 (Prácticas): Notas de exámenes y capacitaciones teóricas/prácticas.
+
+PILAR 3: CUALIDADES PERSONALES
+- Botón 5 (Mesa Calificadora): Feedback de la Jefatura (SIN NOMBRE DEL OFICIAL).
+
+PILAR 4: ASISTENCIA
+- Botón 6 (Clases Oblig.): Detalle de asistencia a las 2 clases mensuales SIAB.
+- Botón 7 (Siniestros): Cantidad de salidas vs Máximo del Cuartel (Cálculo Tope).
+
+POLÍTICA DE PRIVACIDAD: No mostrar nombres de calificadores para mantener
+la institucionalidad de la evaluación.
