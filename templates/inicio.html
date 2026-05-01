@@ -1,114 +1,69 @@
-{% extends "base.html" %}
-{% block titulo %}Inicio{% endblock %}
+{% extends "base.html" %} <!-- Esto le dice que use la barra lateral que ya ves -->
 
-{% block contenido %}
-<div class="card border-0 shadow-sm mb-4 overflow-hidden" style="border-radius: 12px;">
-    <div class="card-body p-0">
-        <div class="row g-0">
-            <div class="col-md-8 p-4 d-flex align-items-center" style="background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); color: white;">
-                <div>
-                    <h3 class="mb-1 fw-bold">Panel de Control</h3>
-                    <p class="mb-0 opacity-75">Gestioná tus asistencias y capacitaciones desde aquí.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{% block contenido %} <!-- Todo lo que pongas aquí adentro aparecerá en el centro -->
 
-<!-- BORRADORES ABIERTOS -->
-{% if borradores %}
-<div class="alert alert-warning d-flex align-items-start gap-2 mb-4">
-    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
-    <div>
-        <strong>Asistencias en borrador</strong> — hay {{ borradores|length }} evento(s) sin confirmar:
-        <div class="mt-2 d-flex flex-wrap gap-2">
-            {% for b in borradores %}
-            <a href="{{ url_for('editar_borrador', evento_id=b.id) }}"
-               class="btn btn-sm btn-warning fw-semibold">
-                <i class="bi bi-pencil"></i>
-                {{ b.tipo }} — {{ b.fecha.strftime('%d/%m/%Y') if b.fecha else '' }}
-                {% if b.descripcion %} ({{ b.descripcion[:30] }}){% endif %}
+<div class="container-fluid mt-4">
+    <h2 class="text-secondary mb-4"><i class="fas fa-th-large"></i> Panel de Control - Bomberos Almafuerte</h2>
+    
+    <!-- Fila 1: Operativa -->
+    <div class="row g-4">
+        <!-- Siniestros -->
+        <div class="col-md-4">
+            <a href="{{ url_for('asistencia') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none p-4">
+                <i class="fas fa-fire-extinguisher fa-3x mb-3"></i>
+                <h4>Siniestros</h4>
+                <p class="small mb-0">Carga de salidas y toma de asistencia.</p>
             </a>
-            {% endfor %}
         </div>
-    </div>
-</div>
-{% endif %}
+        
+        <!-- Móviles -->
+        <div class="col-md-4">
+            <a href="{{ url_for('gestion_moviles') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none p-4" style="filter: brightness(90%);">
+                <i class="fas fa-truck-moving fa-3x mb-3"></i>
+                <h4>Móviles</h4>
+                <p class="small mb-0">Estado de la Unidad 43/5 y flota.</p>
+            </a>
+        </div>
 
-<!-- STATS -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="card stat-card h-100">
-            <div class="card-body">
-                <div class="stat-numero">{{ stats.bomberos_activos }}</div>
-                <div class="text-muted small">Bomberos activos</div>
-            </div>
+        <!-- Actividades -->
+        <div class="col-md-4">
+            <a href="/actividades" class="card h-100 shadow-sm bg-warning text-dark text-decoration-none p-4">
+                <i class="fas fa-tasks fa-3x mb-3"></i>
+                <h4>Actividades</h4>
+                <p class="small mb-0">Programadas y Realizadas.</p>
+            </a>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card h-100">
-            <div class="card-body">
-                <div class="stat-numero">{{ stats.eventos_mes }}</div>
-                <div class="text-muted small">Eventos este mes</div>
-            </div>
+
+    <!-- Fila 2: Administración y HCD -->
+    <div class="row g-4 mt-2">
+        <!-- Personal -->
+        <div class="col-md-4">
+            <a href="/legajos" class="card h-100 shadow-sm bg-primary text-white text-decoration-none p-4">
+                <i class="fas fa-users fa-3x mb-3"></i>
+                <h4>Personal</h4>
+                <p class="small mb-0">Legajos, Puntos y Departamentos.</p>
+            </a>
         </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card h-100">
-            <div class="card-body">
-                <div class="stat-numero">{{ stats.asistencias_mes }}</div>
-                <div class="text-muted small">Asistencias este mes</div>
-            </div>
+
+        <!-- H.C.D. -->
+        <div class="col-md-4">
+            <a href="/hcd" class="card h-100 shadow-sm bg-dark text-white text-decoration-none p-4">
+                <i class="fas fa-balance-scale fa-3x mb-3"></i>
+                <h4>H.C.D.</h4>
+                <p class="small mb-0">Comisión Directiva y Socios.</p>
+            </a>
         </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card h-100">
-            <div class="card-body">
-                <div class="stat-numero">{{ stats.cursos_anio }}</div>
-                <div class="text-muted small">Cursos este año</div>
-            </div>
+
+        <!-- Sistema -->
+        <div class="col-md-4">
+            <a href="/configuracion" class="card h-100 shadow-sm bg-secondary text-white text-decoration-none p-4">
+                <i class="fas fa-database fa-3x mb-3"></i>
+                <h4>Sistema</h4>
+                <p class="small mb-0">Configuración y Backups.</p>
+            </a>
         </div>
     </div>
 </div>
 
-<!-- ACCESOS RÁPIDOS -->
-<h6 class="text-muted fw-semibold mb-3">ACCESOS RÁPIDOS</h6>
-<div class="row g-3">
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('asistencia') }}" class="card text-decoration-none h-100">
-            <div class="card-body text-center py-4">
-                <i class="bi bi-check2-square text-danger" style="font-size:2.2rem"></i>
-                <div class="fw-semibold mt-2">Tomar Asistencia</div>
-                <small class="text-muted">Guardia / Evento</small>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('historial_asistencia') }}" class="card text-decoration-none h-100">
-            <div class="card-body text-center py-4">
-                <i class="bi bi-clock-history text-danger" style="font-size:2.2rem"></i>
-                <div class="fw-semibold mt-2">Historial</div>
-                <small class="text-muted">Ver registros</small>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('nuevo_curso') }}" class="card text-decoration-none h-100">
-            <div class="card-body text-center py-4">
-                <i class="bi bi-mortarboard text-danger" style="font-size:2.2rem"></i>
-                <div class="fw-semibold mt-2">Registrar Curso</div>
-                <small class="text-muted">Carga grupal</small>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('departamentos') }}" class="card text-decoration-none h-100">
-            <div class="card-body text-center py-4">
-                <i class="bi bi-diagram-3 text-danger" style="font-size:2.2rem"></i>
-                <div class="fw-semibold mt-2">Departamentos</div>
-                <small class="text-muted">Grupos y áreas</small>
-            </div>
-        </a>
-    </div>
-</div>
 {% endblock %}

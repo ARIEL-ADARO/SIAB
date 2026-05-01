@@ -13,6 +13,8 @@ import os
 import hashlib
 import hmac
 from werkzeug.security import check_password_hash
+from controladores.moviles import obtener_estado_unidades
+from database import get_db
 ahora = datetime.now()
 # Esto genera "/04/2026", que es como termina la fecha en tu DB
 mes_busqueda = ahora.strftime('/%m/%Y')
@@ -20,25 +22,7 @@ mes_busqueda = ahora.strftime('/%m/%Y')
 app = Flask(__name__)
 app.secret_key = "siab_bomberos_2026_secretkey"
 
-# ============================================================
-# CONFIGURACIÓN BASE DE DATOS
-# ============================================================
-
-DB_CONFIG = {
-    "host":     "localhost",
-    "port":     3306,
-    "user":     "root",
-    "password": "siab1234",
-    "database": "siab"
-}
-
-def get_db():
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        return conn
-    except Error as e:
-        print(f"Error de conexión: {e}")
-        return None
+# Aqui iba la conexión a la base de datos
 
 # ============================================================
 # HELPERS
@@ -157,48 +141,61 @@ def logout():
 
 
 # ============================================================
-# INICIO
+# INICIO Y REDIRECCIÓN
 # ============================================================
+
+@app.route("/")
+def index():
+    # Esta función SOLO decide a dónde ir apenas abrís el navegador
+    if "usuario_id" in session:
+        return redirect(url_for("inicio"))
+    return redirect(url_for("login"))
 
 @app.route("/inicio")
 @login_requerido
 def inicio():
+    # Esta función SOLO carga las estadísticas de Bomberos Almafuerte
     conn = get_db()
     stats = {}
     borradores = []
+    
     if conn:
         cur = conn.cursor(dictionary=True)
 
+        # Bomberos Activos
         cur.execute("SELECT COUNT(*) as total FROM legajos WHERE situacion = 'ACTIVO'")
         stats["bomberos_activos"] = cur.fetchone()["total"]
 
-        cur.execute("""SELECT COUNT(*) as total FROM eventos
-                       WHERE MONTH(fecha) = MONTH(CURDATE())
-                       AND YEAR(fecha) = YEAR(CURDATE())
+        # Eventos del mes
+        cur.execute("""SELECT COUNT(*) as total FROM eventos 
+                       WHERE MONTH(fecha) = MONTH(CURDATE()) 
+                       AND YEAR(fecha) = YEAR(CURDATE()) 
                        AND estado = 'FINALIZADO'""")
         stats["eventos_mes"] = cur.fetchone()["total"]
 
-        cur.execute("""SELECT COUNT(*) as total FROM asistencia a
-                       JOIN eventos e ON a.evento_id = e.id
-                       WHERE a.estado = 'PRESENTE'
-                       AND MONTH(e.fecha) = MONTH(CURDATE())
+        # Asistencias del mes
+        cur.execute("""SELECT COUNT(*) as total FROM asistencia a 
+                       JOIN eventos e ON a.evento_id = e.id 
+                       WHERE a.estado = 'PRESENTE' 
+                       AND MONTH(e.fecha) = MONTH(CURDATE()) 
                        AND e.estado = 'FINALIZADO'""")
         stats["asistencias_mes"] = cur.fetchone()["total"]
 
-        cur.execute("""SELECT COUNT(*) as total FROM cursos
+        # Cursos del año
+        cur.execute("""SELECT COUNT(*) as total FROM cursos 
                        WHERE YEAR(fecha_inicio) = YEAR(CURDATE())""")
         stats["cursos_anio"] = cur.fetchone()["total"]
 
         # Borradores abiertos
         cur.execute("""
-            SELECT e.id, e.tipo, e.descripcion, e.fecha, e.hora_inicio,
-                   COUNT(a.id) as total,
-                   SUM(a.estado = 'PRESENTE') as presentes,
-                   e.fecha_creacion
-            FROM eventos e
-            LEFT JOIN asistencia a ON e.id = a.evento_id
-            WHERE e.estado = 'BORRADOR'
-            GROUP BY e.id
+            SELECT e.id, e.tipo, e.descripcion, e.fecha, e.hora_inicio, 
+                   COUNT(a.id) as total, 
+                   SUM(a.estado = 'PRESENTE') as presentes, 
+                   e.fecha_creacion 
+            FROM eventos e 
+            LEFT JOIN asistencia a ON e.id = a.evento_id 
+            WHERE e.estado = 'BORRADOR' 
+            GROUP BY e.id 
             ORDER BY e.fecha_creacion DESC
         """)
         borradores = cur.fetchall()
@@ -230,7 +227,7 @@ def get_bomberos():
               AND bd.departamento_id = %s
               AND bd.activo = 1
             ORDER BY l.apellido, l.nombre
-            LIMIT 5        
+   
         """, (depto_id,))
     else:
         # Si no se eligió departamento, trae a TODOS los activos
@@ -239,7 +236,7 @@ def get_bomberos():
             FROM legajos
             WHERE situacion = 'ACTIVO'
             ORDER BY apellido, nombre
-            LIMIT 5        
+    
         """)
     
     bomberos = cur.fetchall()
@@ -271,7 +268,7 @@ def asistencia():
             FROM legajos 
             WHERE situacion = 'ACTIVO' 
             ORDER BY apellido, nombre 
-            LIMIT 5
+
         """)
         bomberos = cur.fetchall()
         
@@ -940,12 +937,40 @@ def bomberos():
             FROM legajos
             WHERE situacion != 'BAJA'
             ORDER BY situacion, apellido, nombre
-            LIMIT 5        
+    
         """)
         lista = cur.fetchall()
         conn.close()
     return render_template("bomberos.html", bomberos=lista)
 
+@app.route("/asistencia/bomberos")
+@login_requerido
+def asistencia_bomberos_json():
+    # Obtenemos el departamento si viene en la URL, sino 'todos'
+    dep_id = request.args.get('departamento_id', 'todos')
+    
+    conn = get_db()
+    lista = []
+    if conn:
+        cur = conn.cursor(dictionary=True)
+        
+        # Consulta base
+        query = "SELECT legajo, apellido, nombre, grado, rango_categoria, es_encargado FROM legajos WHERE situacion != 'BAJA'"
+        params = []
+
+        # Si se eligió un departamento específico, filtramos
+        if dep_id != 'todos':
+            query += " AND departamento_id = %s"
+            params.append(dep_id)
+
+        query += " ORDER BY apellido, nombre"
+        
+        cur.execute(query, params)
+        lista = cur.fetchall()
+        conn.close()
+    
+    # IMPORTANTE: Devolvemos JSON, no render_template
+    return jsonify(lista)
 
 # ============================================================
 # CONFIGURACIÓN DE PUNTOS
@@ -1240,56 +1265,175 @@ def mi_perfil():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
 
-    # --- DATOS PARA AUDITORÍA (Los 7 puntos) ---
-    
-    # A. Vocación: SIAB vs RUBA
-    # Aquí traerías las sumas de horas de tus tablas de actividades
-    vocacion_siab_hs = 12.5  # Ejemplo: Suma de tabla actividades local
-    vocacion_ruba_hs = 8.0   # Ejemplo: Suma de tabla servicios nexo
-    
-    # B. Siniestros: Cálculo de Tope y Puntos (Punto 7)
+    # --- 1. DATOS BÁSICOS DEL BOMBERO ---
+    cur.execute("SELECT * FROM legajos WHERE legajo = %s", (legajo,))
+    usuario = cur.fetchone()
+
+    if not usuario:
+        cur.close()
+        return f"Error: El legajo '{legajo}' no existe.", 404
+
+    # --- 0. CONFIGURACIÓN DE FECHAS ---
+    from datetime import datetime
+    ahora = datetime.now()
+    filtro_mes = ahora.strftime('%Y-%m') + "%"
+    filtro_anio_actual = ahora.strftime('%Y') + "%"
+    filtro_anio_anterior = str(int(ahora.strftime('%Y')) - 1) + "%"
+
+    servicios_especiales = (
+        'Servicios Especiales', 'Capacitación', 'Prevención', 'Falsa Alarma', 
+        'Representación', 'Falso Aviso', 'Suministro de agua', 'Otros',
+        'Extracción de panales', 'Retirado de ovito', 'Colaboración con fuerzas de seguridad',
+        'Colocación de driza', 'Servicio: Suministro de Agua', 'Servicio: Otros',
+        'Prevención: Eventos'
+    )
+    placeholders = ', '.join(['%s'] * len(servicios_especiales))
+
+    # --- 1. RECOLECCIÓN DE DATOS (MES ACTUAL) ---
+
+    # BOTÓN 1: Horas SIAB (Sin filtro de estado para asegurar visualización de cargas locales)
     cur.execute("""
-        SELECT COUNT(p.id) as cant 
-        FROM nexo_personal p 
+        SELECT SUM(horas) as total FROM actividades 
+        WHERE legajo = %s AND fecha_inicio LIKE %s 
+        AND actividad NOT LIKE '%%CLASE OBLIGATORIA%%' 
+        AND (anulada IS NULL OR anulada = 0)
+    """, (legajo, filtro_mes))
+    res_b1 = cur.fetchone()
+    b1_horas_siab = float(res_b1['total'] or 0.0)
+
+    # BOTÓN 2: Servicios RUBA
+    cur.execute(f"""
+        SELECT COUNT(p.id) as cant FROM nexo_personal p 
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id 
+        WHERE p.legajo = %s AND s.fecha LIKE %s AND s.tipo_siniestro IN ({placeholders})
+    """, (legajo, filtro_mes, *servicios_especiales))
+    res_b2 = cur.fetchone()
+    b2_servicios_ruba = int(res_b2['cant'] or 0)
+
+    # BOTÓN 3: Notas Emergencia (Promedio últimas 5)
+    cur.execute(f"""
+        SELECT p.puntos_operativos FROM nexo_personal p
         JOIN nexo_siniestros s ON p.siniestro_id = s.id
-        WHERE s.fecha LIKE %s
-        GROUP BY p.legajo 
-        ORDER BY cant DESC LIMIT 1
-    """, (mes_busqueda,))
+        WHERE p.legajo = %s AND s.tipo_siniestro NOT IN ({placeholders})
+        ORDER BY s.fecha DESC 
+    """, (legajo, *servicios_especiales))
+    ultimas_notas = cur.fetchall()
+    b3_promedio_emergencia = round(sum(float(n['puntos_operativos'] or 0) for n in ultimas_notas) / len(ultimas_notas), 2) if ultimas_notas else 0.0
+
+    # BOTÓN 6: Clases Obligatorias
+    cur.execute("""
+        SELECT COUNT(*) as cant FROM actividades 
+        WHERE legajo = %s AND fecha_inicio LIKE %s 
+        AND actividad LIKE '%%CLASE OBLIGATORIA%%' 
+        AND (anulada IS NULL OR anulada = 0)
+    """, (legajo, filtro_mes))
+    res_b6 = cur.fetchone()
+    b6_clases_oblig = int(res_b6['cant'] or 0)
+
+    # BOTÓN 7: Siniestros Reales
+    cur.execute(f"""
+        SELECT COUNT(p.id) as cant FROM nexo_personal p 
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id 
+        WHERE p.legajo = %s AND s.fecha LIKE %s 
+        AND s.tipo_siniestro NOT IN ({placeholders})
+        AND s.tipo_siniestro NOT LIKE 'Servicio%%'
+    """, (legajo, filtro_mes, *servicios_especiales))
+    res_b7 = cur.fetchone()
+    b7_siniestros_reales = int(res_b7['cant'] or 0)
+
+    # --- 2. TOTALES ANUALES (RECONOCIMIENTO) ---
+
+    # Horas Totales Año Actual
+    cur.execute("SELECT SUM(horas) as total FROM actividades WHERE legajo = %s AND fecha_inicio LIKE %s AND (anulada IS NULL OR anulada = 0)", (legajo, filtro_anio_actual))
+    total_anio_actual = float(cur.fetchone()['total'] or 0.0)
+
+    # Horas Totales Año Anterior
+    cur.execute("SELECT SUM(horas) as total FROM actividades WHERE legajo = %s AND fecha_inicio LIKE %s AND (anulada IS NULL OR anulada = 0)", (legajo, filtro_anio_anterior))
+    total_anio_anterior = float(cur.fetchone()['total'] or 0.0)
+
+    # Máximo del Cuartel (Para proporcionalidad de asistencia)
+    cur.execute(f"""
+        SELECT COUNT(p.id) as cant FROM nexo_personal p 
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id 
+        WHERE s.fecha LIKE %s AND s.tipo_siniestro NOT IN ({placeholders})
+        GROUP BY p.legajo ORDER BY cant DESC LIMIT 1
+    """, (filtro_mes, *servicios_especiales))
     res_max = cur.fetchone()
-    max_cuartel = res_max['cant'] if res_max else 1
+    max_cuartel = res_max['cant'] if res_max and res_max['cant'] > 0 else 1
+
+    # --- NUEVO: MÁXIMO DE SERVICIOS ESPECIALES DEL CUARTEL ---
+    cur.execute(f"""
+        SELECT COUNT(p.id) as cant FROM nexo_personal p 
+        JOIN nexo_siniestros s ON p.siniestro_id = s.id 
+        WHERE s.fecha LIKE %s AND s.tipo_siniestro IN ({placeholders})
+        GROUP BY p.legajo ORDER BY cant DESC LIMIT 1
+    """, (filtro_mes, *servicios_especiales))
+    res_max_servicios = cur.fetchone()
     
-    cur.execute("""
-        SELECT COUNT(p.id) as cant 
-        FROM nexo_personal p
-        JOIN nexo_siniestros s ON p.siniestro_id = s.id
-        WHERE p.legajo = %s AND s.fecha LIKE %s
-    """, (legajo, mes_busqueda))
+    # Si nadie hizo servicios en el mes, el divisor es 1 para evitar errores
+    max_servicios_cuartel = res_max_servicios['cant'] if res_max_servicios and res_max_servicios['cant'] > 0 else 1
 
-    mis_salidas = cur.fetchone()['cant']
+    # --- 3. CÁLCULO DE PILARES (ESCALA 0-5) ---
 
-    # C. Calificaciones de Emergencia (Punto 3 - Sin nombres)
+    # PILAR 1: VOCACIÓN
+    # Definimos horas_puntuables primero para que el diccionario de abajo no falle
+    horas_puntuables = min(10.0, b1_horas_siab) 
+    
+    # Parte A: Horas (2.5 pts máximo)
+    puntos_horas = (horas_puntuables / 10.0) * 2.5 
+
+    # Parte B: Servicios Especiales (2.5 pts máximo comparado con el mejor del mes)
+    puntos_servicios = (b2_servicios_ruba / max_servicios_cuartel) * 2.5
+
+    pilar_vocacion = min(5.0, round(puntos_horas + puntos_servicios, 2))
+
+    # PILAR 2: TÉCNICA
+    pilar_tecnica = min(5.0, b3_promedio_emergencia / 2)
+
+    # PILAR 3: CUALIDADES (Fijo)
     cur.execute("""
-        SELECT p.calificacion, s.tipo_incidente, s.fecha, p.observaciones
-        FROM nexo_personal p
-        JOIN nexo_siniestros s ON p.siniestro_id = s.id
-        WHERE p.legajo = %s
-        ORDER BY s.fecha DESC LIMIT 5
+        SELECT nota_cualidades 
+        FROM calificaciones_cualidades 
+        WHERE legajo = %s
     """, (legajo,))
-    ultimas_calificaciones = cur.fetchall()
 
-    # --- DICCIONARIO DE DATOS FINAL ---
-    datos = {
-        'vocacion_siab_hs': vocacion_siab_hs,
-        'vocacion_ruba_hs': vocacion_ruba_hs,
-        'total_salidas': mis_salidas,
-        'siniestros_max_cuartel': max_cuartel,
-        'siniestros_puntos_puros': puntos_siniestros,
-        'calificaciones_emergencia': ultimas_calificaciones,
-        # ... (sumar aquí los promedios académicos y mesa calificadora)
+    resultado = cur.fetchone()
+
+    # Si existe nota, la usamos; si no, queda en 0.0
+    pilar_cualidades = float(resultado['nota_cualidades']) if resultado else 0.0
+
+    # PILAR 4: ASISTENCIA (50% Clases Oblig. / 50% Salidas Reales)
+    puntos_clases = (b6_clases_oblig / 2) * 2.5
+    puntos_salidas = (b7_siniestros_reales / max_cuartel) * 2.5
+    pilar_asistencia = min(5.0, round(puntos_clases + puntos_salidas, 2))
+
+    # PROMEDIO GENERAL (0-5)
+    promedio_final = round((pilar_vocacion + pilar_tecnica + pilar_cualidades + pilar_asistencia) / 4, 2)
+
+    # --- 4. DICCIONARIO PARA TEMPLATE ---
+    datos_perfil = {
+        **usuario,
+        'b1_horas': b1_horas_siab,
+        'b1_computables': horas_puntuables,
+        'b2_servicios': b2_servicios_ruba,
+        'b3_nota_emerg': b3_promedio_emergencia,
+        'b4_practicas': 0.0,
+        'b5_cualidades': pilar_cualidades,
+        'b6_clases': b6_clases_oblig,
+        'b7_siniestros': b7_siniestros_reales,
+        'total_anio_actual': total_anio_actual,
+        'total_anio_anterior': total_anio_anterior,
+        'pilar_vocacion': round(pilar_vocacion, 2),
+        'pilar_tecnica': round(pilar_tecnica, 2),
+        'pilar_asistencia': pilar_asistencia,
+        'pilar_cualidades': pilar_cualidades,
+        'promedio_general': promedio_final,
+        'max_cuartel': max_cuartel
     }
 
-    return render_template("mi_perfil.html", datos=datos)
+    cur.close()
+    conn.close()
+    return render_template("mi_perfil.html", datos=datos_perfil)
 
 @app.route("/mesa-calificadora")
 @login_requerido
@@ -1673,6 +1817,27 @@ def mis_actividades_gestion():
                            registros=registros, 
                            total_horas=total_horas)
 
+def calcular_pilar_vocacion(legajo, mes, anio):
+    # Formateamos el filtro de fecha para el mes actual (ej: "04/2026")
+    filtro_fecha = f"%/{mes:02d}/{anio}"
+    
+    cur.execute("""
+        SELECT SUM(horas) as total_hs 
+        FROM actividades 
+        WHERE legajo = %s 
+        AND fecha_inicio LIKE %s 
+        AND estado = 'ACTIVA' 
+        AND anulada = 0
+    """, (legajo, filtro_fecha))
+    
+    resultado = cur.fetchone()
+    horas_totales = float(resultado['total_hs'] or 0.0)
+    
+    # Ejemplo de escala: 10 horas mensuales = 5 puntos (máximo)
+    puntaje = min(5.0, (horas_totales / 10) * 5)
+    
+    return puntaje, horas_totales
+
 from datetime import datetime
 
 @app.route('/planilla-nexo/nueva', methods=['GET', 'POST'])
@@ -1978,6 +2143,37 @@ def ejecutar_backup():
     
     return redirect(url_for('inicio'))
 
+# ============================================================
+# MOVILES
+# ============================================================
+
+@app.route('/moviles')
+@login_requerido # Esto asegura que solo los bomberos autorizados entren
+def gestion_moviles():
+    # El bombero entra aquí para ver la flota (como la 43/5)
+    datos = obtener_estado_unidades()
+    return render_template('moviles.html', unidades=datos)
+
+@app.route('/moviles/crear', methods=['POST'])
+def crear_movil():
+    if request.method == 'POST':
+        nro = request.form['nro_unidad']
+        homenaje = request.form['nombre_homenaje']
+        modelo = request.form['modelo']
+        tipo = request.form['tipo']
+        vtv = request.form['fecha_vtv']
+        patente = request.form['patente']
+
+        db = get_db()
+        cursor = db.cursor()
+        query = """INSERT INTO moviles (nro_unidad, nombre_homenaje, modelo, tipo, fecha_vtv, patente, estado) 
+                   VALUES (%s, %s, %s, %s, %s, %s, 'ACTIVO')"""
+        cursor.execute(query, (nro, homenaje, modelo, tipo, vtv if vtv else None, patente))
+        db.commit()
+        db.close()
+        
+        return redirect(url_for('gestion_moviles'))
+      
 # ============================================================
 # MAIN
 # ============================================================

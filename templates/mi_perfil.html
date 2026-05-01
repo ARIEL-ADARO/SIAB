@@ -2,120 +2,140 @@
 
 {% block contenido %}
 <style>
-    /* Estilos para que los botones sean compactos y elegantes */
+    /* Estilos de botones de acción compactos */
     .btn-compact {
-        padding: 4px 15px !important;
-        font-size: 0.78rem !important;
-        width: 180px !important; /* Ancho fijo para orden visual */
-        display: flex !important;
+        padding: 8px 14px !important;
+        font-size: 0.85rem !important;
+        width: 100% !important;
+        display: inline-flex !important;
         align-items: center;
-        justify-content: center;
-        border-radius: 20px !important;
+        justify-content: flex-start;
+        border-radius: 10px !important;
+        margin-bottom: 8px;
+        border-width: 2px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    .btn-compact:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .btn-compact i { width: 20px; margin-right: 12px; text-align: center; font-size: 1rem; }
+
+    /* Contenedor de radar optimizado */
+    .radar-container {
+        height: 300px;
+        width: 100%;
+        position: relative;
         margin: 0 auto;
     }
-    .btn-compact i { margin-right: 8px; }
-    
-    /* Contenedor de acciones */
-    .acciones-card {
-        border-top: 1px solid #dee2e6;
-        padding-top: 15px;
-        margin-top: 15px;
+
+    /* Cards de KPIS */
+    .card-kpi {
+        border: none;
+        border-radius: 12px;
+        transition: transform 0.2s;
     }
+    .card-kpi:hover { transform: scale(1.02); }
+    
+    .text-xs { font-size: 0.7rem; text-uppercase: uppercase; letter-spacing: 0.5px; }
 </style>
 
 <div class="container mt-4">
     <div class="row">
+        <!-- COLUMNA IZQUIERDA: PERFIL -->
         <div class="col-md-4">
-            <div class="card shadow-sm mb-4">
+            <div class="card shadow-sm mb-4 border-0">
                 <div class="card-body text-center">
                     <div class="mb-3">
                         <i class="fas fa-user-circle fa-5x text-secondary"></i>
                     </div>
-                    <h4>{{ datos.apellido }}, {{ datos.nombre }}</h4>
-                    <span class="badge bg-danger mb-2">{{ datos.grado }}</span>
-                    <p class="text-muted">Legajo: #{{ datos.legajo }}</p>
-                    <hr>
-                    <div class="text-start">
-                        <p><strong>Cargo:</strong> {{ datos.cargo or 'Sin asignar' }}</p>
-                        <p><strong>Situación:</strong> {{ datos.situacion }}</p>
-                        <p><strong>Email:</strong> {{ datos.email or 'N/A' }}</p>
+                    <h4 class="fw-bold mb-0">{{ datos.apellido }}, {{ datos.nombre }}</h4>
+                    <p class="badge bg-danger px-3 mb-2">{{ datos.grado }}</p>
+                    <p class="text-muted small">Legajo: #{{ datos.legajo }}</p>
+                    <hr class="my-3">
+                    <div class="text-start px-3">
+                        <p class="mb-1 text-secondary text-xs">Cargo Institucional</p>
+                        <p class="fw-bold mb-2">{{ datos.cargo or 'Sin asignar' }}</p>
+                        <p class="mb-1 text-secondary text-xs">Situación Revista</p>
+                        <p class="fw-bold mb-0 text-success">{{ datos.situacion }}</p>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- COLUMNA DERECHA: ESTADÍSTICAS -->
         <div class="col-md-8">
-            <div class="row g-3 mb-4 text-center">
-                <div class="col-md-3">
-                    <div class="card h-100 border-0 shadow-sm bg-gradient text-white" style="background: linear-gradient(45deg, #1a2a6c, #b21f1f);">
-                        <div class="card-body p-2">
-                            <h6 class="text-uppercase small opacity-75 mt-2">Promedio Acad.</h6>
-                            <h2 class="fw-bold mb-0">{{ datos.promedio_general }}</h2>
-                            <small class="d-block pb-2">Cumplimiento: {{ datos.porcentaje_asistencia }}%</small>
+            <!-- TARJETAS SUPERIORES (KPIs) -->
+            <div class="row g-3 mb-4">
+                <!-- Promedio General -->
+                <div class="col-6 col-md-3">
+                    <div class="card card-kpi shadow-sm bg-dark text-white text-center h-100 p-2">
+                        <div class="card-body">
+                            <span class="text-xs opacity-75">PUNTAJE TOTAL</span>
+                            <h2 class="fw-bold mb-0 mt-1">{{ datos.promedio_general }}</h2>
+                            <small class="text-warning">Sobre 20</small>
                         </div>
                     </div>
                 </div>
-
-                <div class="col-md-3">
-                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-info">
-                        <div class="card-body p-2">
-                            <h6 class="text-uppercase text-muted small mt-2">Actividades</h6>
-                            <h2 class="fw-bold text-dark mb-0">{{ datos.horas_actividad_reales | default(0) }}</h2>
-                            <span class="badge rounded-pill bg-info text-dark">{{ datos.pilar_vocacion }} / 5.0 pts</span>
+                <!-- Siniestros (Botón 7) -->
+                <div class="col-6 col-md-3">
+                    <div class="card card-kpi shadow-sm border-start border-4 border-danger text-center h-100 p-2">
+                        <div class="card-body">
+                            <span class="text-xs text-muted">EMERGENCIAS</span>
+                            <h2 class="fw-bold text-danger mb-0 mt-1">{{ datos.b7_siniestros }}</h2>
+                            <span class="badge bg-danger-subtle text-danger">{{ datos.pilar_asistencia }} pts</span>
                         </div>
                     </div>
                 </div>
-
-                <div class="col-md-3">
-                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-danger">
-                        <div class="card-body p-2">
-                            <h6 class="text-uppercase text-muted small mt-2">Siniestros</h6>
-                            <h2 class="fw-bold text-danger mb-0">{{ datos.total_salidas }}</h2>
-                            <small class="text-danger fw-bold">Puntos: {{ datos.pilar_asistencia }}</small>
+                <!-- Servicios (Botón 2) -->
+                <div class="col-6 col-md-3">
+                    <div class="card card-kpi shadow-sm border-start border-4 border-primary text-center h-100 p-2">
+                        <div class="card-body">
+                            <span class="text-xs text-muted">SERVICIOS/CAP</span>
+                            <h2 class="fw-bold text-primary mb-0 mt-1">{{ datos.b2_servicios }}</h2>
+                            <small class="text-muted">RUBA</small>
                         </div>
                     </div>
                 </div>
-
-                <div class="col-md-3">
-                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-success">
-                        <div class="card-body p-2">
-                            <h6 class="text-uppercase text-muted small mt-2">Firmas</h6>
-                            <h2 class="fw-bold text-success mb-0">{{ datos.pendientes_firma_bombero }}</h2>
-                            <small class="fw-bold text-success">Al día</small>
+                <!-- Horas Actividad (Botón 1) -->
+                <div class="col-6 col-md-3">
+                    <div class="card card-kpi shadow-sm border-start border-4 border-success text-center h-100 p-2">
+                        <div class="card-body">
+                            <span class="text-xs text-muted">HS ACTIVIDAD</span>
+                            <h2 class="fw-bold text-success mb-0 mt-1">{{ datos.b1_horas | round(1) }}</h2>
+                            <small class="text-muted">SIAB</small>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Mi Calificación Institucional</h5>
-                    <span class="badge bg-warning text-dark">Promedio Final: {{ datos.puntaje_final }}</span>
+            <!-- GRÁFICO DE PILARES -->
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-chart-line me-2 text-danger"></i>Rendimiento Mensual</h5>
                 </div>
                 <div class="card-body">
                     <div class="row align-items-center">
-                        <div class="col-md-6 text-center">
-                            <div style="height: 250px;">
+                        <div class="col-md-7">
+                            <div class="radar-container">
                                 <canvas id="graficoPilares"></canvas>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="p-3 border rounded bg-light text-center">
-                                <h6 class="text-muted small text-uppercase">Estado de Legajo:</h6>
-                                <h3 class="fw-bold text-danger">{{ datos.calif_desc }} ({{ datos.calif_letra }})</h3>
-                                
-                                <div class="acciones-card mt-3">
-                                    <h6 class="text-muted small text-uppercase mb-2" style="font-size: 0.65rem;">Acciones Rápidas</h6>
-                                    <div class="d-flex flex-column gap-2">
-                                        <a href="{{ url_for('mis_capacitaciones') }}" class="btn btn-sm btn-outline-primary">
-                                            <i class="fas fa-certificate"></i> Capacitaciones
-                                        </a>
-                                        <a href="{{ url_for('mis_actividades_gestion') }}" class="btn btn-sm btn-outline-secondary">
-                                            <i class="fas fa-tools"></i> Actividades
-                                        </a>
-                                        <a href="{{ url_for('ver_mis_salidas') }}" class="btn btn-sm btn-outline-danger">
-                                            <i class="fas fa-fire"></i> Salidas ({{ datos.total_salidas }})
-                                        </a>
+                        <div class="col-md-5">
+                            <div class="p-2">
+                                <div class="bg-light p-3 rounded-4 shadow-sm border">
+                                    <h6 class="text-muted text-xs mb-3 text-center">DESGLOSE POR PILAR</h6>
+                                    <div class="d-flex flex-column">
+                                        <button class="btn btn-outline-primary btn-compact" data-bs-toggle="modal" data-bs-target="#modalVocacion">
+                                            <i class="fas fa-heart"></i> Vocación
+                                        </button>
+                                        <button class="btn btn-outline-warning text-dark btn-compact" data-bs-toggle="modal" data-bs-target="#modalTecnica">
+                                            <i class="fas fa-tools"></i> Cap. Técnica
+                                        </button>
+                                        <button class="btn btn-outline-success btn-compact" data-bs-toggle="modal" data-bs-target="#modalAsistencia">
+                                            <i class="fas fa-calendar-check"></i> Asistencia
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-compact" disabled>
+                                            <i class="fas fa-user-shield"></i> Cualidades (4.5)
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -123,139 +143,148 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
 
-            <div class="card shadow-sm">
-                <div class="card-header bg-secondary text-white">
-                    <h6 class="mb-0">Últimos Registros</h6>
+<!-- MODAL VOCACIÓN (PILAR 1) -->
+<div class="modal fade" id="modalVocacion" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Pilar 1: Vocación de Servicio</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <div class="row mb-4">
+                    <div class="col-6 border-end">
+                        <p class="text-muted small mb-1">Horas SIAB</p>
+                        <h3 class="fw-bold text-primary mb-0">{{ datos.b1_horas }}</h3>
+                        <small>(Botón 1)</small>
+                    </div>
+                    <div class="col-6">
+                        <p class="text-muted small mb-1">Servicios RUBA</p>
+                        <h3 class="fw-bold text-primary mb-0">{{ datos.b2_servicios }}</h3>
+                        <small>(Botón 2)</small>
+                    </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Fecha</th>
-                                <th>Tipo</th>
-                                <th>Descripción</th>
-                                <th class="text-end">Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for h in historial %}
-                            <tr>
-                                <td>{{ h.fecha }}</td>
-                                <td>{{ h.actividad }}</td>
-                                <td>{{ h.descripcion or '-' }}</td>
-                                <td class="text-end">
-                                    <span class="badge {% if h.estado == 'PRESENTE' %}bg-success{% else %}bg-secondary{% endif %}">
-                                        {{ h.estado }}
-                                    </span>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted">No hay registros este mes</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="alert alert-primary rounded-4">
+                    <h5 class="mb-0">Puntaje Pilar: <strong>{{ datos.pilar_vocacion }} / 5.0</strong></h5>
                 </div>
             </div>
-        </div> </div> </div> <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL TÉCNICA (PILAR 2) -->
+<div class="modal fade" id="modalTecnica" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title fw-bold">Pilar 2: Capacidad Técnica</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="text-center mb-4">
+                    <p class="text-muted small mb-1">Promedio Últimas 5 Emergencias</p>
+                    <h2 class="fw-bold">{{ datos.b3_nota_emerg }}</h2>
+                    <small>(Botón 3)</small>
+                </div>
+                <div class="bg-light p-3 rounded-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Prácticas y Exámenes (Botón 4):</span>
+                        <span class="fw-bold">{{ datos.b4_practicas }}</span>
+                    </div>
+                </div>
+                <div class="alert alert-warning text-dark rounded-4 text-center">
+                    <h5 class="mb-0">Puntaje Pilar: <strong>{{ datos.pilar_tecnica }} / 5.0</strong></h5>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ASISTENCIA (PILAR 4) -->
+<div class="modal fade" id="modalAsistencia" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Pilar 4: Asistencia Operativa</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <div class="row align-items-center mb-4">
+                    <div class="col-5">
+                        <h2 class="mb-0 fw-bold">{{ datos.b7_siniestros }}</h2>
+                        <small>Emergencias Reales</small>
+                    </div>
+                    <div class="col-2"><i class="fas fa-divide text-muted"></i></div>
+                    <div class="col-5">
+                        <h2 class="mb-0 fw-bold">{{ datos.max_cuartel }}</h2>
+                        <small>Máximo Cuartel</small>
+                    </div>
+                </div>
+                <hr>
+                <div class="mb-3">
+                    <span class="text-muted">Clases Obligatorias (Botón 6):</span>
+                    <span class="badge bg-success ms-2">{{ datos.b6_clases }} / 2</span>
+                </div>
+                <div class="alert alert-success rounded-4">
+                    <h5 class="mb-0">Puntaje Pilar: <strong>{{ datos.pilar_asistencia }} / 5.0</strong></h5>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SCRIPTS PARA CHART.JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('graficoPilares').getContext('2d');
         new Chart(ctx, {
             type: 'radar',
             data: {
-                labels: [['VOCACION', '(Act.+Serv.)'], 'CAP. TECNICA', 'CUALIDADES', ['ASISTENCIA', '(Siniestros)']],
+                labels: ['VOCACIÓN', 'CAP. TÉCNICA', 'CUALIDADES', 'ASISTENCIA'],
                 datasets: [{
-                    label: 'Puntaje Actual',
+                    label: 'Puntaje Mensual',
                     data: [
-                        {{ datos.pilar_vocacion | default(0) }}, 
-                        {{ datos.pilar_tecnica | default(0) }}, 
-                        {{ datos.pilar_cualidades | default(0) }}, 
-                        {{ datos.pilar_asistencia | default(0) }}
+                        {{ datos.pilar_vocacion }}, 
+                        {{ datos.pilar_tecnica }}, 
+                        {{ datos.pilar_cualidades }}, 
+                        {{ datos.pilar_asistencia }}
                     ],
-                    backgroundColor: 'rgba(178, 31, 31, 0.2)',
-                    borderColor: 'rgba(178, 31, 31, 1)',
-                    borderWidth: 2
+                    backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                    borderColor: 'rgba(220, 53, 69, 1)',
+                    borderWidth: 3,
+                    pointBackgroundColor: 'rgba(220, 53, 69, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(220, 53, 69, 1)'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: { 
-                    r: { 
-                        min: 0, 
-                        max: 5, 
-                        ticks: { display: false },
-                        grid: { color: 'rgba(0,0,0,0.1)' }
-                    } 
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 5,
+                        beginAtZero: true,
+                        ticks: { stepSize: 1, display: false },
+                        grid: { color: 'rgba(0,0,0,0.1)' },
+                        angleLines: { color: 'rgba(0,0,0,0.1)' },
+                        pointLabels: { 
+                            font: { size: 11, weight: 'bold' },
+                            color: '#444'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
                 }
             }
         });
     });
 </script>
-<div class="modal fade" id="modalSiniestros" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">Cálculo de Puntos por Siniestros</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body text-center">
-                <p class="text-muted small">TUS SALIDAS / MÁXIMO DEL CUARTEL</p>
-                <div class="d-flex justify-content-around align-items-center mb-3">
-                    <div>
-                        <h3 class="mb-0">{{ datos.total_salidas }}</h3>
-                        <small>Tus Salidas</small>
-                    </div>
-                    <div class="display-6 text-muted">/</div>
-                    <div>
-                        <h3 class="mb-0">{{ datos.siniestros_max_cuartel }}</h3>
-                        <small>Tope Cuartel</small>
-                    </div>
-                </div>
-                <div class="alert alert-danger py-2">
-                    <strong>Puntaje: {{ datos.siniestros_puntos_puros }} / 5.0</strong>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="modalNotasEmergencia" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">Desempeño en Intervenciones</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Incidente</th>
-                            <th>Nota</th>
-                            <th>Observación</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for calif in datos.calificaciones_emergencia %}
-                        <tr>
-                            <td>{{ calif.fecha }}</td>
-                            <td>{{ calif.tipo_incidente }}</td>
-                            <td><span class="badge bg-dark">{{ calif.calificacion }}</span></td>
-                            <td class="small">{{ calif.observaciones or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <p class="text-muted small text-center mt-3 italic">
-                    * Las calificaciones son emitidas por la Jefatura de Dotación de forma institucional.
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}

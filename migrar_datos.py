@@ -1,6 +1,7 @@
 import sqlite3
 import mysql.connector
 from mysql.connector import Error
+from datetime import datetime
 
 DB_CONFIG_MYSQL = {
     "host": "localhost",
@@ -10,20 +11,39 @@ DB_CONFIG_MYSQL = {
 }
 
 def limpiar_valor(valor, nombre_columna):
-    # Traducir "SI/NO" a "1/0" para columnas numéricas como 'autoriza' o 'es_encargado'
-    if nombre_columna in ['autoriza', 'es_encargado']:
+    # --- 1. TRANSFORMAR FECHAS (El cambio clave) ---
+    # Identificamos columnas que contienen fechas según tu .schema
+    columnas_fecha = [
+        'fecha_inicio', 'fecha_fin', 'fecha_carga', 
+        'firma_bombero_fecha', 'firma_supervisor_fecha', 
+        'fecha_anulacion', 'fecha_creacion', 'fecha_modificacion'
+    ]
+    
+    if nombre_columna in columnas_fecha and valor:
+        try:
+            # Si el valor viene como "DD/MM/YYYY" desde SQLite
+            # Lo convertimos a objeto datetime y luego a "YYYY-MM-DD"
+            fecha_obj = datetime.strptime(str(valor).strip(), '%d/%m/%Y')
+            return fecha_obj.strftime('%Y-%m-%d')
+        except ValueError:
+            # Si la fecha ya estaba en formato correcto o tiene otro error, 
+            # intentamos dejarla pasar o devolver None si está mal
+            return valor
+
+    # --- 2. TRADUCIR BOOLEANOS ---
+    if nombre_columna in ['autoriza', 'es_encargado', 'anulada']:
         if isinstance(valor, str):
             v = valor.strip().upper()
             if v == 'SI': return 1
             if v == 'NO': return 0
     
-    # Quitar el .0 de los celulares que vienen de Excel
+    # --- 3. LIMPIEZA DE CELULARES ---
     if nombre_columna == 'nro_cel':
         if isinstance(valor, float) or (isinstance(valor, str) and valor.endswith('.0')):
             try: return str(int(float(valor)))
             except: return valor
             
-    # Si el valor es una cadena vacía, mandamos NULL a MySQL
+    # Si es cadena vacía o solo espacios, mandamos NULL
     if isinstance(valor, str) and not valor.strip():
         return None
         
@@ -42,12 +62,10 @@ def migrar():
         mysql_cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
         print("Restricciones desactivadas...")
 
-        # Tablas a migrar (quité eventos porque ya vimos que no existe en tu .db)
         tablas = ['conceptos', 'usuarios', 'legajos', 'actividades', 'actividades_historial', 'notificaciones']
 
         for tabla in tablas:
             try:
-                # Verificar si existe en SQLite
                 sqlite_cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tabla}'")
                 if not sqlite_cursor.fetchone():
                     continue
@@ -61,21 +79,20 @@ def migrar():
                     print(f"  -> '{tabla}' está vacía.")
                     continue
 
-                # Preparar el INSERT
                 nombres_cols = ", ".join([f"`{c}`" for c in columnas])
                 placeholders = ", ".join(["%s"] * len(columnas))
                 query_insert = f"INSERT INTO `{tabla}` ({nombres_cols}) VALUES ({placeholders})"
 
-                # Limpiar y procesar datos fila por fila
                 datos_para_mysql = []
                 for fila in filas:
+                    # Aquí aplicamos la nueva lógica de limpieza de fechas
                     fila_limpia = tuple(limpiar_valor(fila[i], columnas[i]) for i in range(len(columnas)))
                     datos_para_mysql.append(fila_limpia)
 
                 mysql_cursor.execute(f"DELETE FROM `{tabla}`")
                 mysql_cursor.executemany(query_insert, datos_para_mysql)
                 mysql_conn.commit()
-                print(f"  -> OK: {len(filas)} registros movidos.")
+                print(f"  -> OK: {len(filas)} registros movidos y formateados.")
             
             except Exception as e:
                 print(f"  -> ERROR en tabla '{tabla}': {e}")

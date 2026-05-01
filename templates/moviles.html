@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-truck-moving"></i> Gestión de Móviles</h2>
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalNuevoMovil">
+            <i class="fas fa-plus"></i> Nueva Unidad
+        </button>
+    </div>
+
+    <div class="row">
+        {% for movil in moviles %}
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-start border-4 {% if movil.estado == 'ACTIVO' %}border-success{% elif movil.estado == 'REPARACION' %}border-warning{% else %}border-danger{% endif %}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <h3 class="card-title text-danger">Unidad {{ movil.nro_unidad }}</h3>
+                        <span class="badge {% if movil.estado == 'ACTIVO' %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ movil.estado }}
+                        </span>
+                    </div>
+                    <h5 class="text-dark mt-2">"{{ movil.nombre_homenaje }}"</h5>
+                    <p class="text-muted mb-1"><i class="fas fa-car"></i> {{ movil.marca_modelo }}</p>
+                    <p class="text-muted small"><i class="fas fa-info-circle"></i> {{ movil.tipo }}</p>
+                </div>
+                <div class="card-footer bg-transparent border-top-0 d-flex justify-content-around">
+                    <a href="/moviles/editar/{{ movil.id }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-edit"></i> Editar</a>
+                    <a href="/moviles/historial/{{ movil.id }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-history"></i> Log</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+<!-- Modal Nueva Unidad -->
+<div class="modal fade" id="modalNuevoMovil" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Registrar Nueva Unidad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('crear_movil') }}" method="POST">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Número de Unidad</label>
+                            <input type="text" name="nro_unidad" class="form-control" placeholder="Ej: 43/5" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Patente</label>
+                            <input type="text" name="patente" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Nombre de Homenaje</label>
+                            <input type="text" name="nombre_homenaje" class="form-control" placeholder="Nombre del Bombero">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Modelo / Marca</label>
+                            <input type="text" name="modelo" class="form-control" placeholder="Ej: Peugeot Partner">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo</label>
+                            <select name="tipo" class="form-select">
+                                <option value="Traslado">Unidad de Traslado</option>
+                                <option value="Incendio">Incendio</option>
+                                <option value="Rescate">Rescate</option>
+                                <option value="Logística">Logística</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vencimiento VTV</label>
+                            <input type="date" name="fecha_vtv" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Guardar Unidad</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
