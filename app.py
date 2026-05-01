@@ -4,17 +4,25 @@ SIAB - Sistema Informático Automatizado de Bomberos
 App Flask principal - Etapa 2 v2
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, session, flash, jsonify
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime
-import hashlib
 import os
-import hashlib
-import hmac
-from werkzeug.security import check_password_hash
-from controladores.moviles import obtener_estado_unidades
+import pandas as pd  # Importante para el reporte Excel
+from io import BytesIO
 from database import get_db
+
+# ReportLab para el PDF institucional
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
+# Definición de ruta base
+base_dir = os.path.abspath(os.path.dirname(__file__))
+
 ahora = datetime.now()
 # Esto genera "/04/2026", que es como termina la fecha en tu DB
 mes_busqueda = ahora.strftime('/%m/%Y')
@@ -2148,32 +2156,241 @@ def ejecutar_backup():
 # ============================================================
 
 @app.route('/moviles')
-@login_requerido # Esto asegura que solo los bomberos autorizados entren
+@login_requerido # Asegura el acceso solo a personal de Bomberos
 def gestion_moviles():
-    # El bombero entra aquí para ver la flota (como la 43/5)
-    datos = obtener_estado_unidades()
-    return render_template('moviles.html', unidades=datos)
+    # Obtenemos la flota completa desde el controlador
+    # Lo ideal es que obtener_estado_unidades() traiga ahora todos los campos técnicos
+    todos_los_moviles = obtener_estado_unidades() 
+    
+    # Separamos en dos listas para la interfaz:
+    # 1. Los que están operativos (para las tarjetas superiores)
+    # 2. Los que son parte de la historia del cuartel (para la grilla inferior)
+    activos = [m for m in todos_los_moviles if m['estado'] in ['ACTIVO', 'REPARACION']]
+    historicos = [m for m in todos_los_moviles if m['estado'] in ['HISTORICO', 'BAJA']]
+    
+    return render_template('moviles.html', 
+                           moviles=activos, 
+                           moviles_historicos=historicos)
 
 @app.route('/moviles/crear', methods=['POST'])
+@login_requerido
 def crear_movil():
     if request.method == 'POST':
-        nro = request.form['nro_unidad']
-        homenaje = request.form['nombre_homenaje']
-        modelo = request.form['modelo']
-        tipo = request.form['tipo']
-        vtv = request.form['fecha_vtv']
-        patente = request.form['patente']
+        # Recolección de todos los datos del formulario técnico
+        nro = request.form.get('nro_unidad')
+        dominio = request.form.get('dominio')
+        homenaje = request.form.get('nombre_homenaje')
+        marca = request.form.get('marca')
+        modelo = request.form.get('modelo')
+        anio = request.form.get('anio')
+        tipo = request.form.get('tipo')
+        origen = request.form.get('lugar_origen')
+        proveedor = request.form.get('proveedor')
+        
+        # Datos operativos (con valores por defecto si vienen vacíos)
+        agua = request.form.get('capacidad_agua') or 0
+        espuma = request.form.get('tiene_espuma')
+        personas = request.form.get('capacidad_personas') or 0
+        
+        # Fechas y Trailer
+        vtv = request.form.get('fecha_vtv')
+        compra = request.form.get('fecha_compra')
+        t_dominio = request.form.get('trailer_dominio')
+        t_ejes = request.form.get('trailer_ejes') or 0
+        km_ini = request.form.get('km_inicial') or 0
 
         db = get_db()
         cursor = db.cursor()
-        query = """INSERT INTO moviles (nro_unidad, nombre_homenaje, modelo, tipo, fecha_vtv, patente, estado) 
-                   VALUES (%s, %s, %s, %s, %s, %s, 'ACTIVO')"""
-        cursor.execute(query, (nro, homenaje, modelo, tipo, vtv if vtv else None, patente))
-        db.commit()
-        db.close()
+        
+        query = """INSERT INTO moviles 
+                   (nro_unidad, dominio, nombre_homenaje, marca, modelo, anio, tipo, 
+                    lugar_origen, proveedor, capacidad_agua, tiene_espuma, 
+                    capacidad_personas, fecha_vtv, fecha_compra, trailer_dominio, 
+                    trailer_ejes, estado, fecha_alta, km_inicial)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVO', NOW())"""
+        
+        valores = (
+            nro, dominio, homenaje, marca, modelo, anio if anio else None, tipo,
+            origen, proveedor, agua, espuma, personas,
+            vtv if vtv else None, compra if compra else None,
+            t_dominio, t_ejes
+        )
+
+        try:
+            cursor.execute(query, valores)
+            db.commit()
+        except Exception as e:
+            print(f"Error al insertar móvil: {e}")
+            db.rollback()
+        finally:
+            db.close()
         
         return redirect(url_for('gestion_moviles'))
-      
+
+@app.route('/moviles/editar/<int:id>', methods=['GET', 'POST'])
+@login_requerido
+def editar_movil(id):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    km_ini = request.form.get('km_inicial') or 0
+
+    if request.method == 'POST':
+        # Captura masiva de datos para supervisores
+        query = """
+            UPDATE moviles SET 
+                nro_unidad=%s, dominio=%s, nombre_homenaje=%s, marca=%s, modelo=%s, 
+                anio=%s, tipo=%s, lugar_origen=%s, proveedor=%s, capacidad_agua=%s, 
+                tiene_espuma=%s, capacidad_personas=%s, fecha_vtv=%s, fecha_compra=%s, 
+                trailer_dominio=%s, trailer_ejes=%s, estado=%s, km_inicial=%s
+            WHERE id=%s
+        """
+        valores = (
+            request.form.get('nro_unidad'), request.form.get('dominio'), 
+            request.form.get('nombre_homenaje'), request.form.get('marca'), 
+            request.form.get('modelo'), request.form.get('anio') or None, 
+            request.form.get('tipo'), request.form.get('lugar_origen'), 
+            request.form.get('proveedor'), request.form.get('capacidad_agua') or 0, 
+            request.form.get('tiene_espuma'), request.form.get('capacidad_personas') or 0, 
+            request.form.get('fecha_vtv') or None, request.form.get('fecha_compra') or None, 
+            request.form.get('trailer_dominio'), request.form.get('trailer_ejes') or 0, 
+            request.form.get('estado'), id
+        )
+        
+        cursor.execute(query, valores)
+        db.commit()
+        db.close()
+        return redirect(url_for('gestion_moviles'))
+
+    cursor.execute("SELECT * FROM moviles WHERE id = %s", (id,))
+    movil = cursor.fetchone()
+    db.close()
+    return render_template('editar_movil.html', movil=movil)
+
+@app.route('/moviles/mantenimiento/registrar/<int:id_movil>', methods=['POST'])
+@login_requerido
+def registrar_mantenimiento(id_movil):
+    if request.method == 'POST':
+        fecha = request.form.get('fecha')
+        tipo = request.form.get('tipo')
+        desc = request.form.get('descripcion')
+        prov = request.form.get('proveedor')
+        km = request.form.get('km') or 0
+        importe = request.form.get('importe') or 0
+        proximo = request.form.get('proximo_vence') or None
+        obs = request.form.get('observaciones')
+
+        db = get_db()
+        cursor = db.cursor()
+        query = """INSERT INTO historial_mantenimiento 
+                   (id_movil, fecha_reparacion, tipo_mantenimiento, descripcion, 
+                    proveedor, km_unidad, importe_total, fecha_proximo_mantenimiento, observaciones) 
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        
+        cursor.execute(query, (id_movil, fecha, tipo, desc, prov, km, importe, proximo, obs))
+        db.commit()
+        db.close()
+        return redirect(url_for('editar_movil', id=id_movil))
+
+import csv
+from flask import Response
+
+@app.route('/moviles/reporte-seguro')
+@login_requerido
+def reporte_seguro():
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    # Traemos solo los móviles activos para el seguro
+    cursor.execute("SELECT nro_unidad, dominio, nro_chasis, nro_motor, marca, modelo, anio, aseguradora FROM moviles WHERE estado = 'ACTIVO'")
+    moviles = cursor.fetchall()
+    
+    def generate():
+        data = [['Unidad', 'Dominio', 'Chasis', 'Motor', 'Marca', 'Modelo', 'Año', 'Seguro']]
+        yield ','.join(data[0]) + '\n'
+        for m in moviles:
+            row = [str(m['nro_unidad']), m['dominio'], m['nro_chasis'], m['nro_motor'], m['marca'], m['modelo'], str(m['anio']), m['aseguradora']]
+            yield ','.join(row) + '\n'
+
+    return Response(generate(), mimetype='text/csv', headers={"Content-disposition": "attachment; filename=listado_seguro_almafuerte.csv"})
+
+@app.route('/moviles/reporte-excel')
+@login_requerido
+def reporte_excel():
+    db = get_db()
+    query = "SELECT nro_unidad, dominio, marca, modelo, nro_chasis, nro_motor, km_inicial, aseguradora, estado FROM moviles"
+    df = pd.read_sql(query, db)
+    db.close()
+
+    df.columns = ['Unidad', 'Patente', 'Marca', 'Modelo', 'Chasis', 'Motor', 'KM inicial', 'Seguro', 'Estado actual']
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Parque Automotor')
+        
+        # Ajuste automático de columnas
+        worksheet = writer.sheets['Parque Automotor']
+        for col in worksheet.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+            worksheet.column_dimensions[column].width = max_length + 2
+
+    output.seek(0)
+    return send_file(output, download_name="SIAB_Moviles_Almafuerte.xlsx", as_attachment=True)
+
+@app.route('/moviles/reporte-pdf')
+def reporte_pdf():
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # Traemos los datos incluyendo los nuevos campos para el seguro y km inicial
+        cursor.execute("SELECT nro_unidad, dominio, marca, modelo, nro_chasis, nro_motor, km_inicial, estado FROM moviles WHERE estado != 'BAJA'")
+        moviles = cursor.fetchall()
+        db.close()
+
+        output = BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=landscape(A4), topMargin=20)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Ruta al logo institucional de Almafuerte
+        logo_path = os.path.join(base_dir, "static", "img", "Bomberos.png")
+        
+        if os.path.exists(logo_path):
+            img = Image(logo_path, 0.8*inch, 0.8*inch)
+            img.hAlign = 'LEFT'
+            elements.append(img)
+
+        elements.append(Paragraph("<b>BOMBEROS VOLUNTARIOS ALMAFUERTE</b>", styles['Title']))
+        elements.append(Paragraph(f"Listado de Parque Automotor - Generado el {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+        elements.append(Spacer(1, 12))
+
+        # Tabla con los datos legales solicitados
+        tabla_data = [['Unidad', 'Patente', 'Marca / Modelo', 'Chasis', 'Motor', 'KM Inicial', 'Estado']]
+        for m in moviles:
+            tabla_data.append([
+                m['nro_unidad'], m['dominio'], f"{m['marca']} {m['modelo']}", 
+                m['nro_chasis'], m['nro_motor'], m['km_inicial'], m['estado']
+            ])
+
+        t = Table(tabla_data, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.red), # Color institucional
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ]))
+        
+        elements.append(t)
+        doc.build(elements)
+        output.seek(0)
+
+        return send_file(output, download_name="Listado_Oficial_Almafuerte.pdf", as_attachment=True)
+
+    except Exception as e:
+        return f"Error al generar PDF: {str(e)}"
+          
 # ============================================================
 # MAIN
 # ============================================================

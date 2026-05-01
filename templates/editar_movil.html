@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container mt-4 mb-5">
+    <div class="card shadow">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-edit"></i> Ficha Integral: Móvil {{ movil.nro_unidad }}</h4>
+            <span class="badge bg-danger">Perfil Supervisor</span>
+        </div>
+        <form method="POST" class="card-body">
+            <!-- SECCIÓN 1: IDENTIDAD E HISTORIA -->
+            <h5 class="text-danger border-bottom pb-2">Identificación e Historia</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label">Número de Móvil</label>
+                    <input type="text" name="nro_unidad" class="form-control" value="{{ movil.nro_unidad }}" required>
+                    <label class="form-label">KM Iniciales (Compra)</label>
+                    <input type="number" name="km_inicial" class="form-control" value="{{ movil.km_inicial }}" placeholder="Km al recibirlo">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Dominio (Patente)</label>
+                    <input type="text" name="dominio" class="form-control" value="{{ movil.dominio }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Nombre de Homenaje</label>
+                    <input type="text" name="nombre_homenaje" class="form-control" value="{{ movil.nombre_homenaje }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Estado del Móvil</label>
+                    <select name="estado" class="form-select">
+                        <option value="ACTIVO" {% if movil.estado == 'ACTIVO' %}selected{% endif %}>ACTIVO (En Servicio)</option>
+                        <option value="REPARACION" {% if movil.estado == 'REPARACION' %}selected{% endif %}>REPARACIÓN (Fuera de Servicio)</option>
+                        <option value="HISTORICO" {% if movil.estado == 'HISTORICO' %}selected{% endif %}>HISTÓRICO (Baja del Cuartel)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: DATOS PARA SEGUROS Y LEGALES -->
+            <h5 class="text-danger border-bottom pb-2">Seguros y Datos Legales</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <label class="form-label">Compañía Aseguradora</label>
+                    <input type="text" name="aseguradora" class="form-control" value="{{ movil.aseguradora }}" placeholder="Nombre del Seguro">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Nro de Chasis</label>
+                    <input type="text" name="nro_chasis" class="form-control" value="{{ movil.nro_chasis }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Nro de Motor</label>
+                    <input type="text" name="nro_motor" class="form-control" value="{{ movil.nro_motor }}">
+                </div>
+            </div>
+
+            <!-- SECCIÓN 3: FICHA MECÁNICA Y ORIGEN -->
+            <h5 class="text-danger border-bottom pb-2">Ficha Mecánica y Origen</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label">Marca</label>
+                    <input type="text" name="marca" class="form-control" value="{{ movil.marca }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Modelo</label>
+                    <input type="text" name="modelo" class="form-control" value="{{ movil.modelo }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Año</label>
+                    <input type="number" name="anio" class="form-control" value="{{ movil.anio }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Lugar de Origen</label>
+                    <input type="text" name="lugar_origen" class="form-control" value="{{ movil.lugar_origen }}">
+                </div>
+            </div>
+
+            <!-- SECCIÓN 4: CAPACIDADES Y LOGÍSTICA -->
+            <h5 class="text-danger border-bottom pb-2">Capacidades y Logística</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label">Agua (Litros)</label>
+                    <input type="number" name="capacidad_agua" class="form-control" value="{{ movil.capacidad_agua }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Vencimiento ITV/VTV</label>
+                    <input type="date" name="fecha_vtv" class="form-control" value="{{ movil.fecha_vtv }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Dominio Trailer</label>
+                    <input type="text" name="trailer_dominio" class="form-control" value="{{ movil.trailer_dominio }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Ejes Trailer</label>
+                    <input type="number" name="trailer_ejes" class="form-control" value="{{ movil.trailer_ejes }}">
+                </div>
+            </div>
+
+            <div class="mt-4 border-top pt-3 d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalMantenimiento">
+                    <i class="fas fa-tools"></i> Ver/Cargar Mantenimiento
+                </button>
+                <div>
+                    <a href="/moviles" class="btn btn-secondary me-2">Cancelar</a>
+                    <button type="submit" class="btn btn-danger px-5">Actualizar Ficha Completa</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- TABLA DE HISTORIAL DE MANTENIMIENTO -->
+    <div class="card mt-4 shadow-sm">
+        <div class="card-header bg-secondary text-white">
+            <i class="fas fa-history"></i> Historial de Reparaciones y Mantenimiento
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Descripción</th>
+                        <th>Proveedor</th>
+                        <th>KM</th>
+                        <th>Importe</th>
+                        <th>Próx. Vencimiento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in historial %}
+                    <tr>
+                        <td>{{ h.fecha_reparacion }}</td>
+                        <td>{{ h.descripcion }}</td>
+                        <td>{{ h.proveedor }}</td>
+                        <td>{{ h.km_unidad }}</td>
+                        <td>${{ h.importe_total }}</td>
+                        <td class="text-danger"><strong>{{ h.fecha_proximo_mantenimiento }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">No hay registros de mantenimiento para este móvil.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Nueva Reparación -->
+<div class="modal fade" id="modalMantenimiento" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Cargar Reparación / Mantenimiento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/moviles/mantenimiento/registrar/{{ movil.id }}" method="POST">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha</label>
+                            <input type="date" name="fecha" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo</label>
+                            <select name="tipo" class="form-select">
+                                <option value="Preventivo">Preventivo (Service/Filtros)</option>
+                                <option value="Correctivo">Correctivo (Reparación)</option>
+                                <option value="Mejora">Mejora/Equipamiento</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción de la Tarea</label>
+                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Cambio de batería 12v 75ah">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Proveedor / Taller</label>
+                            <input type="text" name="proveedor" class="form-control" placeholder="Ej: Taller Mecánico X o En Cuartel">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Kilometraje</label>
+                            <input type="number" name="km" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Importe Total</label>
+                            <input type="number" step="0.01" name="importe" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Recordatorio Próximo Vencimiento</label>
+                            <input type="date" name="proximo_vence" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Observaciones</label>
+                            <textarea name="observaciones" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-danger">Guardar Mantenimiento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

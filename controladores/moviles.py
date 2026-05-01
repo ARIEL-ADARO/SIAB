@@ -13,17 +13,12 @@ def obtener_estado_unidades():
         
     try:
         cursor = db.cursor(dictionary=True)
-        # Agregamos nombre_homenaje y tipo para que coincida con tu nueva tabla
+        # Seleccionamos TODO (*) incluyendo ID y los nuevos campos técnicos
+        # Agregamos ORDER BY para que el historial se vea ordenado por número
         query = """
-            SELECT 
-                nro_unidad, 
-                nombre_homenaje, 
-                tipo, 
-                modelo, 
-                fecha_vtv, 
-                estado 
-            FROM moviles 
-            WHERE estado != 'BAJA'
+            SELECT * FROM moviles 
+            WHERE estado != 'BAJA' 
+            ORDER BY nro_unidad ASC
         """
         cursor.execute(query)
         unidades = cursor.fetchall()
