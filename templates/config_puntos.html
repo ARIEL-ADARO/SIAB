@@ -2,13 +2,18 @@
 {% block titulo %}Configuración de Puntos{% endblock %}
 
 {% block contenido %}
-<div class="d-flex align-items-center mb-4">
-    <div>
-        <h4 class="mb-0 fw-bold"><i class="bi bi-gear"></i> Configuración de Puntos</h4>
-        <small class="text-muted">Valor por asistencia según año</small>
+<!-- ENCABEZADO CON BOTÓN VOLVER -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center">
+        <div class="me-3">
+            <h4 class="mb-0 fw-bold"><i class="bi bi-gear"></i> Configuración de Puntos</h4>
+            <small class="text-muted">Valor por asistencia según año</small>
+        </div>
     </div>
+    <a href="{{ url_for('panel_sistema') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Volver al Sistema
+    </a>
 </div>
-
 <div class="row g-4">
     <div class="col-12 col-md-5">
         <div class="card">

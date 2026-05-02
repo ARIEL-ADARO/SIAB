@@ -22,6 +22,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 # Definición de ruta base
 base_dir = os.path.abspath(os.path.dirname(__file__))
+from controladores.moviles import obtener_estado_unidades
 
 ahora = datetime.now()
 # Esto genera "/04/2026", que es como termina la fecha en tu DB
@@ -29,6 +30,12 @@ mes_busqueda = ahora.strftime('/%m/%Y')
 
 app = Flask(__name__)
 app.secret_key = "siab_bomberos_2026_secretkey"
+
+DB_CONFIG = {
+    'user': 'root',      # Generalmente 'root'
+    'password': 'siab1234', # Tu contraseña de MySQL
+    'database': 'SIAB'         # El nombre de tu base de datos
+}
 
 # Aqui iba la conexión a la base de datos
 
@@ -575,41 +582,47 @@ def detalle_asistencia(evento_id):
 
     return render_template("detalle_asistencia.html", evento=evento, registros=registros)
 
-from datetime import datetime  # Asegurate de tener esta importación arriba de todo
-
+# RUTA PARA GESTIONAR (Pantalla HTML normal)
 @app.route('/registro-salidas/detalle/<int:id>')
 @login_requerido
 def detalle_siniestro(id):
     db = get_db()
     cur = db.cursor(dictionary=True)
-
-    # 1. Obtener datos del siniestro
     cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
     siniestro = cur.fetchone()
-
-    if not siniestro:
-        flash("Siniestro no encontrado.", "warning")
-        return redirect(url_for('listado_siniestros'))
-
-    # 2. Volvemos a tu consulta original (quitando l.jerarquia que dio error)
+    
     cur.execute("""
-        SELECT p.*, l.nombre, l.apellido 
+        SELECT p.*, l.nombre, l.apellido, l.grado as jerarquia 
         FROM nexo_personal p
         JOIN legajos l ON p.legajo = l.legajo
         WHERE p.siniestro_id = %s
     """, (id,))
     personal = cur.fetchall()
-
     cur.close()
-    db.close()
+    
+    # IMPORTANTE: Esta renderiza la pantalla de GESTIÓN
+    return render_template('nexo_detalle.html', siniestro=siniestro, personal=personal)
 
-    # Esto es lo que necesitábamos para la fecha y hora
-    ahora = datetime.now().strftime('%d/%m/%Y %H:%M')
-
-    return render_template('nexo_detalle.html', 
-                           siniestro=siniestro, 
-                           personal=personal, 
-                           current_time=ahora)
+# RUTA PARA IMPRIMIR (El PDF Virtual con renglones)
+@app.route('/registro-salidas/imprimir/<int:id>')
+@login_requerido
+def imprimir_siniestro(id):
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro = cur.fetchone()
+    
+    cur.execute("""
+        SELECT p.*, l.nombre, l.apellido, l.jerarquia 
+        FROM nexo_personal p
+        JOIN legajos l ON p.legajo = l.legajo
+        WHERE p.siniestro_id = %s
+    """, (id,))
+    personal = cur.fetchall()
+    cur.close()
+    
+    # IMPORTANTE: Esta renderiza tu planilla de firmas
+    return render_template('nexo_reporte.html', siniestro=siniestro, personal=personal)
 
 # ============================================================
 # CAPACITACIONES - POSTAS Y CALIFICACIONES
@@ -1624,10 +1637,12 @@ def listado_siniestros():
     db = get_db()
     cur = db.cursor(dictionary=True)
     
-    # AGREGÁ 'id' AL PRINCIPIO DEL SELECT
+    # Filtramos para que NO muestre Servicios Especiales ni Capacitaciones
+    # Suponiendo que las capacitaciones tienen un grupo específico o están vacías
     cur.execute("""
         SELECT id, nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado 
         FROM nexo_siniestros 
+        WHERE grupo_ruba NOT IN ('Servicios Especiales', 'Capacitaciones', '') 
         ORDER BY id DESC
     """)
     
@@ -1949,14 +1964,14 @@ def imprimir_nexo(id):
     
     # Traemos los bomberos asociados con sus nombres
     cur.execute("""
-        SELECT p.*, b.nombre, b.apellido 
+        SELECT p.*, l.nombre, l.apellido, l.grado as jerarquia 
         FROM nexo_personal p
-        JOIN bomberos b ON p.legajo = b.legajo
+        JOIN legajos l ON p.legajo = l.legajo
         WHERE p.siniestro_id = %s
     """, (id,))
     personal = cur.fetchall()
     
-    return render_template('nexo_print.html', siniestro=siniestro, personal=personal)
+    return render_template('nexo_reporte.html', siniestro=siniestro, personal=personal)
 
     # ==================================================
     # PLANILLA NEXO PARA FIRMAS
@@ -2099,6 +2114,16 @@ def calificar_salida(id):
     cur.close()
     return render_template('nexo_calificar.html', siniestro=siniestro, personal=personal)     
 
+# ============================================================
+# PANEL SISTEMA
+# ============================================================
+@app.route('/configuracion')
+@login_requerido
+@rol_requerido("ADMIN")
+def panel_sistema():
+    # Esta es la ruta que llama al nuevo template
+    return render_template("admin_sistema.html")
+
 @app.route('/admin/backup')
 def ejecutar_backup():
     if session.get('rol') != 'ADMIN':
@@ -2150,6 +2175,79 @@ def ejecutar_backup():
         flash(f"Error crítico: {str(e)}", "danger")
     
     return redirect(url_for('inicio'))
+
+# ============================================================
+# ACADEMIA BOMBERO
+# ============================================================
+
+@app.route("/academia/bombero/<int:legajo>")
+@login_requerido
+def ver_academia_bombero(legajo):
+    conn = get_db()
+    if not conn:
+        flash("Error de conexión a la base de datos.", "danger")
+        return redirect(url_for('inicio'))
+
+    try:
+        cur = conn.cursor(dictionary=True)
+
+        # 1. Consulta a la tabla 'legajos' con los nombres de columna reales
+        cur.execute("""
+            SELECT legajo, nombre, apellido, grado, cargo, foto, situacion 
+            FROM legajos 
+            WHERE legajo = %s
+        """, (legajo,))
+        bombero = cur.fetchone()
+
+        if not bombero:
+            flash(f"No se encontró el legajo {legajo}.", "warning")
+            return redirect(url_for('bomberos'))
+
+        # Mapeo para que el HTML reciba 'jerarquia' aunque en la DB sea 'grado'
+        bombero['jerarquia'] = bombero['grado']
+
+        # 2. Notas de ACADEMIA (Basado en tu tabla de nexo)
+        cur.execute("""
+            SELECT t.descripcion, ant.nota, a.fecha_registro as fecha
+            FROM asistencia_notas_temas ant
+            JOIN temas t ON ant.tema_id = t.id
+            JOIN asistencia a ON ant.evento_id = a.evento_id AND ant.legajo = a.legajo
+            WHERE ant.legajo = %s
+            ORDER BY a.fecha_registro DESC
+        """, (legajo,))
+        notas_academia = cur.fetchall()
+
+        # 3. Puntos de SALIDAS (Usando 'puntos_operativos' de nexo_salidas)
+        cur.execute("""
+            SELECT siniestro_id, movil, rol, puntos_operativos as puntos
+            FROM nexo_salidas 
+            WHERE legajo = %s AND firma_confirmada = 1
+            ORDER BY id DESC
+        """, (legajo,))
+        puntos_salidas = cur.fetchall()
+
+        # 4. Cálculos para los indicadores superiores
+        promedio = 0
+        if notas_academia:
+            promedio = round(sum(n['nota'] for n in notas_academia) / len(notas_academia), 2)
+            
+        total_puntos_operativos = sum(p['puntos'] for p in puntos_salidas)
+
+        return render_template("academia_bombero.html", 
+                               bombero=bombero, 
+                               notas_academia=notas_academia,
+                               puntos_salidas=puntos_salidas,
+                               promedio=promedio,
+                               total_puntos_operativos=total_puntos_operativos,
+                               jefe_dotacion={"nombre": "Firma Autorizada", "jerarquia": "Jefatura"},
+                               cuartelero={"nombre": "Cuartelero de Turno", "jerarquia": "Guardia"})
+
+    except Exception as e:
+        # Esto atrapará cualquier otro error de columna (como el 1054)
+        flash(f"Error en el módulo Academia: {e}", "danger")
+        return redirect(url_for('inicio'))
+    finally:
+        if conn: conn.close()
 
 # ============================================================
 # MOVILES
@@ -2338,58 +2436,141 @@ def reporte_excel():
     output.seek(0)
     return send_file(output, download_name="SIAB_Moviles_Almafuerte.xlsx", as_attachment=True)
 
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, HRFlowable
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
+from datetime import datetime
+import os
+
 @app.route('/moviles/reporte-pdf')
+@login_requerido
 def reporte_pdf():
     try:
         db = get_db()
         cursor = db.cursor(dictionary=True)
-        # Traemos los datos incluyendo los nuevos campos para el seguro y km inicial
-        cursor.execute("SELECT nro_unidad, dominio, marca, modelo, nro_chasis, nro_motor, km_inicial, estado FROM moviles WHERE estado != 'BAJA'")
+        cursor.execute("SELECT nro_unidad, dominio, marca, modelo, nro_chasis, nro_motor, km_inicial FROM moviles WHERE estado != 'BAJA'")
         moviles = cursor.fetchall()
         db.close()
 
         output = BytesIO()
-        doc = SimpleDocTemplate(output, pagesize=landscape(A4), topMargin=20)
-        elements = []
+        doc = SimpleDocTemplate(output, pagesize=A4, topMargin=1*cm, bottomMargin=2.5*cm, leftMargin=1.5*cm, rightMargin=1.5*cm)
+        elementos = []
         styles = getSampleStyleSheet()
+        
+        # --- ESTILOS PERSONALIZADOS ---
+        estilo_entidad = styles['Normal']
+        estilo_entidad.fontSize = 14
+        estilo_entidad.fontName = 'Helvetica-Bold'
+        estilo_entidad.alignment = 1 
+        
+        estilo_sistema = styles['Normal']
+        estilo_sistema.fontSize = 9
+        estilo_sistema.fontName = 'Helvetica' 
+        estilo_sistema.alignment = 1
+        estilo_sistema.leading = 12 
 
-        # Ruta al logo institucional de Almafuerte
-        logo_path = os.path.join(base_dir, "static", "img", "Bomberos.png")
+        # AGREGA ESTE BLOQUE QUE FALTABA:
+        estilo_reporte = styles['Normal']
+        estilo_reporte.fontSize = 12
+        estilo_reporte.fontName = 'Helvetica-Bold'
+        estilo_reporte.alignment = 1
+
+        # --- 1. ENCABEZADO MEJORADO ---
+        logo_path = os.path.join(base_dir, "static", "img", "Bomberos.png")        
+        
+        # --- ENCABEZADO ---
+        col_textos = [
+            Paragraph("SOCIEDAD BOMBEROS VOLUNTARIOS DE ALMAFUERTE", estilo_entidad),
+            Spacer(1, 0.15*cm),
+            Paragraph("<font name='Helvetica'>SIAB - Sistema Informático Automatizado de Bomberos</font>", estilo_sistema),
+            Spacer(1, 0.15*cm),
+            Paragraph("PARQUE AUTOMOTOR", estilo_reporte) # <--- Ahora sí encontrará la variable
+        ]
         
         if os.path.exists(logo_path):
-            img = Image(logo_path, 0.8*inch, 0.8*inch)
-            img.hAlign = 'LEFT'
-            elements.append(img)
+            img = Image(logo_path, 2.3*cm, 2.3*cm)
+            header_data = [[img, col_textos]]
+        else:
+            header_data = [[ "", col_textos]]
 
-        elements.append(Paragraph("<b>BOMBEROS VOLUNTARIOS ALMAFUERTE</b>", styles['Title']))
-        elements.append(Paragraph(f"Listado de Parque Automotor - Generado el {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
-        elements.append(Spacer(1, 12))
+        # Tabla de encabezado: Columna de logo fija, columna de texto centrada
+        header_tab = Table(header_data, colWidths=[2.5*cm, 15.5*cm])
+        header_tab.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'), # Centrar el contenido de la celda de texto
+            ('LEFTPADDING', (1, 0), (1, 0), 0),
+        ]))
+        elementos.append(header_tab)
+        
+        elementos.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#a50000"), spaceAfter=2))
+        
+        # --- DATOS DE SESIÓN (USUARIO LOGEADO) ---
+        # Se asume que guardas el nombre en session['user_nombre'] o session['nombre']
+        usuario_logeado = session.get('user_nombre') or session.get('nombre') or "Usuario No Identificado"
+        fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+        
+        estilo_meta = styles['Normal']
+        estilo_meta.fontSize = 8
+        estilo_meta.textColor = colors.grey
+        elementos.append(Paragraph(f"Generado por: {usuario_logeado} | Fecha y Hora: {fecha_hora}", estilo_meta))
+        elementos.append(Spacer(1, 0.6 * cm))
 
-        # Tabla con los datos legales solicitados
-        tabla_data = [['Unidad', 'Patente', 'Marca / Modelo', 'Chasis', 'Motor', 'KM Inicial', 'Estado']]
+        # --- 2. TABLA DE DATOS (SIN "NONE") ---
+        headers = ['UNIDAD', 'PATENTE', 'MARCA / MODELO', 'CHASIS / MOTOR', 'KM INIC.']
+        data = [headers]
+        
         for m in moviles:
-            tabla_data.append([
-                m['nro_unidad'], m['dominio'], f"{m['marca']} {m['modelo']}", 
-                m['nro_chasis'], m['nro_motor'], m['km_inicial'], m['estado']
+            patente = m['dominio'] if m['dominio'] else ""
+            marca_mod = f"{m['marca'] if m['marca'] else ''} {m['modelo'] if m['modelo'] else ''}".strip()
+            chasis = m['nro_chasis'] if m['nro_chasis'] else ""
+            motor = m['nro_motor'] if m['nro_motor'] else ""
+            
+            data.append([
+                m['nro_unidad'],
+                patente,
+                marca_mod,
+                f"CH: {chasis}\nMOT: {motor}",
+                m['km_inicial'] if m['km_inicial'] is not None else 0
             ])
 
-        t = Table(tabla_data, repeatRows=1)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.red), # Color institucional
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        tabla = Table(data, repeatRows=1, colWidths=[2*cm, 3*cm, 5.5*cm, 5.5*cm, 2*cm])
+        tabla.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#a50000")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
         ]))
-        
-        elements.append(t)
-        doc.build(elements)
-        output.seek(0)
+        elementos.append(tabla)
 
-        return send_file(output, download_name="Listado_Oficial_Almafuerte.pdf", as_attachment=True)
+        # --- 3. PIE DE PÁGINA FIJO ---
+        def footer(canvas, doc):
+            canvas.saveState()
+            
+            # CAMBIA ESTAS DOS LÍNEAS:
+            canvas.setStrokeColor(colors.HexColor("#a50000")) # Cambia colors.grey por el rojo
+            canvas.setLineWidth(1.5)                         # Cambia 0.5 por 1.5 para que sea igual a la de arriba
+            
+            # Línea al final de la hoja (fija)
+            canvas.line(1.5*cm, 1.5*cm, 19.5*cm, 1.5*cm)
+            
+            # El resto queda igual
+            canvas.setFont('Helvetica', 8)
+            canvas.setFillColor(colors.grey)
+            canvas.drawCentredString(A4[0]/2, 1.1*cm, "Fin del Reporte Oficial - SIAB Almafuerte")
+            canvas.restoreState()
+
+        doc.build(elementos, onFirstPage=footer, onLaterPages=footer)
+        
+        output.seek(0)
+        return send_file(output, download_name="Parque_Automotor_Almafuerte.pdf", as_attachment=True)
 
     except Exception as e:
-        return f"Error al generar PDF: {str(e)}"
+        return f"Error en el sistema: {str(e)}"
           
 # ============================================================
 # MAIN

@@ -1,98 +1,51 @@
-{% extends "base_reporte.html" %}
-
-{% block titulo_informe %}PARTE DE INTERVENCIÓN - RUBA #{{ siniestro.nro_part_ruba }}{% endblock %}
-
-{% block cuerpo %}
-<div style="font-size: 9.5pt; margin-bottom: 15px;">
-    <table style="width: 100%; border: none; table-layout: fixed;">
-        <tr>
-            <td style="width: 70%;"><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }}</td>
-            <td style="text-align: right;"><strong>Fecha:</strong> {{ siniestro.fecha }}</td>
-        </tr>
-        <tr>
-            <td colspan="2"><strong>Lugar:</strong> {{ siniestro.lugar or '---' }}</td>
-        </tr>
-    </table>
-</div>
-
-<style>
-    .tabla-firmas { 
-        width: 100%; 
-        border-collapse: collapse; 
-        border: 1.5pt solid black !important; 
-        table-layout: fixed; 
-    }
-    .tabla-firmas th, .tabla-firmas td { 
-        border: 1.5pt solid black !important; 
-        padding: 6px; 
-        font-size: 8pt;
-        word-wrap: break-word;
-    }
-    .tabla-firmas th { background-color: #f2f2f2 !important; text-align: center; -webkit-print-color-adjust: exact; }
-</style>
-
-<table class="tabla-firmas">
-    <thead>
-        <tr>
-            <th style="width: 45%;">APELLIDO Y NOMBRE</th>
-            <th style="width: 25%;">MÓVIL / JERARQUÍA</th>
-            <th style="width: 30%;">FIRMA</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for p in personal %}
-        <tr>
-            <td style="font-weight: bold; text-transform: uppercase;">{{ p.apellido }}, {{ p.nombre }}</td>
-            <td style="text-align: center;">
-                <strong>{{ p.movil }}</strong><br>
-                <small>{{ p.jerarquia }}</small>
-            </td>
-            <td style="text-align: center; vertical-align: bottom; padding-bottom: 5px;">
-                <span style="color: #ccc;">....................................</span>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-{% if siniestro.comentario_general %}
-<div style="border: 1.2pt solid black; padding: 8px; margin-top: 15px; font-size: 8.5pt;">
-    <strong>OBSERVACIONES:</strong> {{ siniestro.comentario_general }}
-</div>
-{% endif %}
-{% endblock %}
-
-{% block firmas %}
-<table style="width: 100%; border: none; table-layout: fixed; text-align: center;">
-    <tr>
-        <td style="width: 50%; vertical-align: top; padding: 0 10px;">
-            <div style="border-top: 1.5pt solid black; padding-top: 5px;">
-                {% set jefe = personal | selectattr("rol", "equalto", "JEFE DE DOTACION") | list %}
-                {% if jefe %}
-                    <p style="margin: 0; font-weight: bold; font-size: 8pt; text-transform: uppercase;">{{ jefe[0].jerarquia }} {{ jefe[0].apellido }}, {{ jefe[0].nombre }}</p>
-                {% else %}
-                    <p style="margin: 0; font-size: 8pt; color: #777;">(NO ASIGNADO)</p>
-                {% endif %}
-                <p style="margin: 0; font-size: 7pt; font-weight: normal; color: #333;">JEFE DE DOTACIÓN</p>
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4><i class="bi bi-file-earmark-text"></i> Gestión de Siniestro #{{ siniestro.nro_part_ruba }}</h4>
+        <a href="{{ url_for('imprimir_nexo', id=siniestro.id) }}" target="_blank" class="btn btn-danger">
+            <i class="bi bi-printer"></i> IMPRIMIR PLANILLA DE FIRMAS
+        </a>
+    </div>
+    <div class="mb-3">
+        <a href="{{ url_for('listado_siniestros') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left-circle"></i> Volver al Listado
+        </a>
+    </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4"><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }}</div>
+                <div class="col-md-4"><strong>Fecha:</strong> {{ siniestro.fecha }}</div>
+                <div class="col-md-4"><strong>Lugar:</strong> {{ siniestro.lugar }}</div>
             </div>
-        </td>
+        </div>
+    </div>
 
-        <td style="width: 50%; vertical-align: top; padding: 0 10px;">
-            <div style="border-top: 1.5pt solid black; padding-top: 5px;">
-                {# Buscamos si hay alguien con rol de Cuartelero u Operador en el personal cargado #}
-                {% set operador = personal | selectattr("rol", "equalto", "OPERADOR DE RADIO") | list %}
-                {% if not operador %}
-                    {% set operador = personal | selectattr("rol", "equalto", "CUARTELERO") | list %}
-                {% endif %}
-
-                {% if operador %}
-                    <p style="margin: 0; font-weight: bold; font-size: 8pt; text-transform: uppercase;">{{ operador[0].jerarquia }} {{ operador[0].apellido }}, {{ operador[0].nombre }}</p>
-                {% else %}
-                    <p style="margin: 0; font-size: 8pt; color: #777;">(NO ASIGNADO)</p>
-                {% endif %}
-                <p style="margin: 0; font-size: 7pt; font-weight: normal; color: #333;">CUARTELERO / OPERADOR</p>
-            </div>
-        </td>
-    </tr>
-</table>
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">Personal Desplazado</div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Legajo</th>
+                        <th>Nombre y Apellido</th>
+                        <th>Móvil</th>
+                        <th>Rol en Salida</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in personal %}
+                    <tr>
+                        <td>{{ p.legajo }}</td>
+                        <td>{{ p.apellido }}, {{ p.nombre }}</td>
+                        <td>{{ p.movil }}</td>
+                        <td>{{ p.rol }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

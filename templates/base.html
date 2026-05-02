@@ -121,14 +121,23 @@
             <a href="#" class="nav-link text-white-50"><i class="bi bi-clipboard-check"></i> Novedades</a>
 
             <div class="sidebar-section">Formación y Cursos</div>
+            
+            <!-- NUEVO BOTÓN: ACADEMIA (Acceso al Legajo del Usuario Actual) -->
+            <a href="{{ url_for('ver_academia_bombero', legajo=session.get('legajo')) }}" 
+               class="nav-link {% if request.endpoint == 'ver_academia_bombero' %}active{% endif %} text-info fw-bold">
+                <i class="bi bi-mortarboard-fill"></i> MI ACADEMIA
+            </a>
+
             {% if session.get('rol') in ['ADMIN', 'SUPERVISOR'] or session.get('grado') in ['JEFATURA', 'OFICIAL'] %}
                 <a class="nav-link {% if request.endpoint == 'asistencia' %}active{% endif %}" href="{{ url_for('asistencia') }}">
                     <i class="bi bi-check2-square"></i> Tomar Asistencia
                 </a>
             {% endif %}
+            
             <a href="{{ url_for('historial_asistencia') }}" class="nav-link {% if request.endpoint == 'historial_asistencia' %}active{% endif %}">
                 <i class="bi bi-clock-history"></i> Historial de Asistencia
             </a>
+            
             <a href="{{ url_for('cursos') }}" class="nav-link {% if request.endpoint == 'cursos' %}active{% endif %}">
                 <i class="bi bi-award"></i> Cursos (Dictados/Recibidos)
             </a>

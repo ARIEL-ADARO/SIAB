@@ -7,6 +7,7 @@
     .bombero-row:hover { background: #fff8f8; }
     .btn-presente  { background:#198754; color:white; border:none; }
     .btn-ausente   { background:#dc3545; color:white; border:none; }
+    .btn-justificado { background:#ffc107; color:#212529; border:none; }
     .btn-estado-inactivo { opacity: 0.2; filter: grayscale(1); }
     
     .estado-badge {
@@ -104,6 +105,8 @@
         <div class="d-flex gap-3">
             <span><i class="bi bi-people"></i> Total: <b id="totalBomberos">0</b></span>
             <span class="text-success"><i class="bi bi-check-circle"></i> Presentes: <b id="cntPresente">0</b></span>
+            <span class="text-danger"><i class="bi bi-x-circle"></i> Ausentes: <b id="cntAusente">0</b></span>
+            <span class="text-warning"><i class="bi bi-exclamation-circle"></i> Justificados: <b id="cntJustificado">0</b></span>
         </div>
         <div class="btn-group btn-group-sm">
             <button class="btn btn-outline-light" onclick="marcarTodos('PRESENTE')">Todos Presentes</button>
@@ -208,37 +211,42 @@
         }
     }
 
-    function renderTabla() {
-        const tbody = document.getElementById('tbody');
-        tbody.innerHTML = '';
+function renderTabla() {
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
 
-        bomberos.forEach(b => {
-            const e = estados[b.legajo];
-            const tr = document.createElement('tr');
-            tr.className = 'align-middle bombero-row';
-            tr.innerHTML = `
-                <td class="small text-muted">${b.legajo}</td>
-                <td>
-                    <div class="fw-bold">${b.apellido}, ${b.nombre}</div>
-                    <div class="small text-muted">${b.grado || ''}</div>
-                </td>
-                <td>
-                    <div class="btn-group">
-                        <button class="btn btn-sm btn-presente ${e.estado !== 'PRESENTE' ? 'btn-estado-inactivo' : ''}" 
-                                onclick="setEstado(${b.legajo}, 'PRESENTE')">PRESENTE</button>
-                        <button class="btn btn-sm btn-ausente ${e.estado !== 'AUSENTE' ? 'btn-estado-inactivo' : ''}" 
-                                onclick="setEstado(${b.legajo}, 'AUSENTE')">AUSENTE</button>
-                    </div>
-                </td>
-                <td>
-                    <input type="text" class="form-control form-control-sm" value="${e.observacion}" 
-                           onchange="estados[${b.legajo}].observacion = this.value">
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-        document.getElementById('totalBomberos').textContent = bomberos.length;
-    }
+    bomberos.forEach(b => {
+        const e = estados[b.legajo];
+        const tr = document.createElement('tr');
+        tr.className = 'align-middle bombero-row';
+        tr.innerHTML = `
+            <td class="small text-muted">${b.legajo}</td>
+            <td>
+                <div class="fw-bold">${b.apellido}, ${b.nombre}</div>
+                <div class="small text-muted">${b.grado || ''}</div>
+            </td>
+            <td>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-presente ${e.estado !== 'PRESENTE' ? 'btn-estado-inactivo' : ''}" 
+                            onclick="setEstado(${b.legajo}, 'PRESENTE')">PRESENTE</button>
+                    
+                    <button class="btn btn-sm btn-ausente ${e.estado !== 'AUSENTE' ? 'btn-estado-inactivo' : ''}" 
+                            onclick="setEstado(${b.legajo}, 'AUSENTE')">AUSENTE</button>
+                    
+                    <!-- NUEVO BOTÓN DE JUSTIFICADO -->
+                    <button class="btn btn-sm btn-justificado ${e.estado !== 'JUSTIFICADO' ? 'btn-estado-inactivo' : ''}" 
+                            onclick="setEstado(${b.legajo}, 'JUSTIFICADO')">JUSTIF.</button>
+                </div>
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" value="${e.observacion}" 
+                       onchange="estados[${b.legajo}].observacion = this.value">
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    document.getElementById('totalBomberos').textContent = bomberos.length;
+}
 
     // --- NUEVA FUNCIÓN PARA LOS SWITCHES ---
     function actualizarComboCalificadores() {
@@ -279,8 +287,16 @@
     }
 
     function actualizarContadores() {
-        const p = Object.values(estados).filter(x => x.estado === 'PRESENTE').length;
+        const listaEstados = Object.values(estados);
+        
+        const p = listaEstados.filter(x => x.estado === 'PRESENTE').length;
+        const a = listaEstados.filter(x => x.estado === 'AUSENTE').length;
+        const j = listaEstados.filter(x => x.estado === 'JUSTIFICADO').length;
+
         document.getElementById('cntPresente').textContent = p;
+        document.getElementById('cntAusente').textContent = a;
+        document.getElementById('cntJustificado').textContent = j;
+        document.getElementById('totalBomberos').textContent = bomberos.length;
     }
 
     function cargarPostasPrevias() {

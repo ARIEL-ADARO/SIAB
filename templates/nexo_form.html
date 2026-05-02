@@ -1,92 +1,129 @@
 {% extends "base.html" %}
 
 {% block contenido %}
-<div class="container mt-4 mb-5">
+<style>
+    /* Estilos para Tablet y Encabezados Fijos */
+    .table-responsive {
+        max-height: 70vh; 
+        overflow-y: auto;
+    }
+
+    /* Encabezado Fijo con Línea Separadora Roja */
+    .sticky-header th {
+        position: sticky;
+        top: 0;
+        background-color: #212529 !important; /* Negro */
+        color: #ffc107 !important; /* Amarillo */
+        z-index: 10;
+        border-bottom: 5px solid #dc3545 !important; /* Línea roja gruesa */
+        padding: 15px;
+        text-align: center;
+    }
+
+    /* Botones de Asistencia Táctiles (Grandes) */
+    .btn-asistencia {
+        width: 100%;
+        margin-bottom: 5px;
+        font-weight: bold;
+        font-size: 0.8rem;
+    }
+
+    /* Estilos de fila según el estado seleccionado */
+    .fila-presente { background-color: #e8f5e9 !important; }  /* Verde muy claro */
+    .fila-justificado { background-color: #fffde7 !important; } /* Amarillo muy claro */
+    .fila-ausente { background-color: #ffebee !important; opacity: 0.8; } /* Rojo muy claro */
+
+    /* Para que los selects se vean bien en pantallas táctiles */
+    .form-select-lg-mobile {
+        padding: 10px;
+        border-radius: 8px;
+    }
+</style>
+
+<div class="container-fluid mt-3 mb-5">
     <div class="card shadow border-0">
-        <div class="card-header bg-danger text-white">
-            <h4 class="mb-0"><i class="bi bi-megaphone"></i> Registro de Salida de Emergencia</h4>
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-3">
+            <h4 class="mb-0"><i class="bi bi-fire"></i> SIAB - Registro de Salida</h4>
+            <a href="{{ url_for('listado_siniestros') }}" class="btn btn-outline-light btn-sm">
+                <i class="bi bi-arrow-left"></i> VOLVER
+            </a>
         </div>
+        
         <div class="card-body">
             <form action="{{ url_for('nueva_planilla_nexo') }}" method="POST">
-                <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm">
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Nro Parte RUBA</label>
+                
+                <!-- Datos del Siniestro -->
+                <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm border-start border-danger border-5">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small">Nro Parte RUBA</label>
                         <input type="text" name="nro_parte" class="form-control border-danger" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold text-danger">Tipo de Siniestro (SIAB)</label>
-                        <select name="tipo_siniestro_id" class="form-select shadow-sm" required>
-                            <option value="">-- Seleccionar Clasificación --</option>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-danger">Tipo de Siniestro</label>
+                        <select name="tipo_siniestro_id" class="form-select border-danger" required>
+                            <option value="">-- Seleccionar --</option>
                             {% for t in tipos_siniestros %}
                                 <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Fecha</label>
-                        <input type="date" name="fecha" value="{{ fecha_hoy }}" class="form-control border-danger">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Hora Salida</label>
-                        <input type="time" name="hora_salida" value="{{ hora_hoy }}" class="form-control border-danger">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Ubicación / Lugar</label>
+                        <input type="text" name="lugar" class="form-control border-danger" placeholder="Ej: Calle San Martín 123" required>
                     </div>
                 </div>
 
-                <div class="table-responsive bg-white rounded shadow-sm">
+                <!-- Tabla de Personal Operativo -->
+                <div class="table-responsive bg-white rounded shadow-sm border">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="table-dark">
-                            <tr>
-                                <th class="text-center" style="width: 80px;">¿Salió?</th>
-                                <th>Bombero</th>
-                                <th style="width: 200px;">Móvil</th>
-                                <th style="width: 250px;">Rol</th>
+                        <thead class="sticky-header">
+                            <tr style="border-bottom: 5px solid #dc3545;"> <!-- Línea roja separadora -->
+                                <th class="text-center" style="width: 280px; background-color: #212529; color: #ffc107;">ASISTENCIA</th>
+                                <th style="background-color: #212529; color: #ffc107;">BOMBERO</th>
+                                <th style="background-color: #212529; color: #ffc107;">MÓVIL</th>
+                                <th style="background-color: #212529; color: #ffc107;">ROL</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for b in bomberos %}
-                            <tr class="bombero-row">
-                                <td class="text-center">
-                                    <input type="checkbox" name="bomberos_seleccionados" value="{{ b.legajo }}" 
-                                        class="form-check-input check-bombero" onchange="toggleFila(this)">
+                            <tr id="fila_{{ b.legajo }}">
+                                <td>
+                                    <!-- TRES BOTONES CLAROS: SALIÓ, JUSTIFICADO, NO -->
+                                    <div class="btn-group w-100" role="group">
+                                        <!-- OPCIÓN 1: PRESENTE (SALIÓ) -->
+                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                            id="p_{{ b.legajo }}" value="PRESENTE" onchange="actualizar('{{ b.legajo }}', 'PRESENTE')">
+                                        <label class="btn btn-outline-success fw-bold" for="p_{{ b.legajo }}">SALIÓ</label>
+
+                                        <!-- OPCIÓN 2: AUSENTE JUSTIFICADO (LA QUE BUSCAMOS) -->
+                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                            id="j_{{ b.legajo }}" value="JUSTIFICADO" onchange="actualizar('{{ b.legajo }}', 'JUSTIFICADO')">
+                                        <label class="btn btn-outline-warning fw-bold text-dark" for="j_{{ b.legajo }}">JUSTIF.</label>
+
+                                        <!-- OPCIÓN 3: AUSENTE (NO ESTÁ) -->
+                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                            id="a_{{ b.legajo }}" value="AUSENTE" onchange="actualizar('{{ b.legajo }}', 'AUSENTE')" checked>
+                                        <label class="btn btn-outline-danger fw-bold" for="a_{{ b.legajo }}">NO</label>
+                                    </div>
                                 </td>
                                 <td>
                                     <div class="fw-bold text-uppercase">{{ b.apellido }}, {{ b.nombre }}</div>
-                                    <small class="text-muted">Legajo: {{ b.legajo }} | {{ b.situacion }}</small>
+                                    <span class="badge bg-dark">Legajo {{ b.legajo }}</span>
                                 </td>
                                 <td>
-                                    <select name="movil_{{ b.legajo }}" class="form-select form-select-sm input-hidden" disabled required>
+                                    <select name="movil_{{ b.legajo }}" id="movil_{{ b.legajo }}" class="form-select ctrl-{{ b.legajo }}" disabled>
                                         <option value="" disabled selected>Móvil...</option>
-                                        
-                                        <optgroup label="Pesados">
-                                            <option value="Móvil 1">Móvil 1 - Autobomba</option>
-                                            <option value="Móvil 2">Móvil 2 - Autobomba</option>
-                                            <option value="Móvil 3">Móvil 3 - Autobomba 4x4</option>
-                                            <option value="Móvil 4">Móvil 4 - Cisterna</option>
-                                        </optgroup>
-
-                                        <optgroup label="Livianos / Logística">
-                                            <option value="Móvil 5">Móvil 5 - Traslado Personal</option>
-                                            <option value="Móvil 11">Móvil 11 - Pickup Logística</option>
-                                            <option value="Móvil 18">Móvil 18 - Semirrígido</option>
-                                        </optgroup>
-
-                                        <optgroup label="Forestales">
-                                            <option value="Móvil 6">Móvil 6 - Pickup Kit</option>
-                                            <option value="Móvil 8">Móvil 8 - Pickup Kit</option>
-                                        </optgroup>
-
-                                        <optgroup label="Otros">
-                                            <option value="Móvil Propio">Móvil Propio</option>
-                                            <option value="Otra Institución">Otra Institución</option>
-                                        </optgroup>
+                                        <option value="Móvil 1">Móvil 1</option>
+                                        <option value="Móvil 43/5">Móvil 43/5</option>
+                                        <option value="Propio">Propio</option>
                                     </select>
                                 </td>
                                 <td>
-                                    <select name="rol_{{ b.legajo }}" class="form-select form-select-sm input-hidden" disabled>
-                                        <option value="OPERATIVO">OPERATIVO</option>
+                                    <select name="rol_{{ b.legajo }}" id="rol_{{ b.legajo }}" class="form-select ctrl-{{ b.legajo }}" disabled>
+                                        <option value="BOMBERO">BOMBERO</option>
                                         <option value="CHOFER">CHOFER</option>
                                         <option value="JEFE DE DOTACION">JEFE DE DOTACIÓN</option>
-                                        <option value="OPERADOR DE RADIO">OPERADOR DE RADIO</option>
+                                        <option value="CUARTELERO">CUARTELERO</option>
                                     </select>
                                 </td>
                             </tr>
@@ -94,8 +131,11 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="mt-4 d-flex justify-content-end">
-                    <button type="submit" class="btn btn-danger btn-lg px-5 shadow">GUARDAR REGISTRO</button>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 shadow fw-bold">
+                        <i class="bi bi-save"></i> GUARDAR REGISTRO DE SALIDA
+                    </button>
                 </div>
             </form>
         </div>
@@ -103,28 +143,34 @@
 </div>
 
 <script>
-function toggleFila(checkbox) {
-    // Buscamos la fila (tr) donde está el checkbox
-    let fila = checkbox.closest('tr');
+function actualizarInterfaz(legajo, estado) {
+    let fila = document.getElementById('fila_' + legajo);
+    let controles = document.querySelectorAll('.select-control-' + legajo);
     
-    // Buscamos todos los elementos con la clase 'input-hidden' dentro de esa fila
-    // (el select de móvil y el select de rol)
-    let elementos = fila.querySelectorAll('.input-hidden');
-    
-    elementos.forEach(el => {
-        // Si el checkbox está marcado, habilitamos; si no, deshabilitamos
-        el.disabled = !checkbox.checked;
-        
-        // Mejora: Si está marcado, lo hacemos obligatorio para no dejar campos vacíos
-        if (checkbox.checked) {
-            el.setAttribute('required', 'required');
-            fila.classList.add('table-active'); // Un toque visual para resaltar la fila
-        } else {
-            el.removeAttribute('required');
-            el.value = ""; // Limpiamos el valor si se desmarca
-            fila.classList.remove('table-active');
-        }
-    });
+    // Resetear clases
+    fila.classList.remove('fila-presente', 'fila-justificado', 'fila-ausente');
+
+    if (estado === 'PRESENTE') {
+        fila.classList.add('fila-presente');
+        controles.forEach(c => {
+            c.disabled = false;
+            c.setAttribute('required', 'required');
+        });
+    } else if (estado === 'JUSTIFICADO') {
+        fila.classList.add('fila-justificado');
+        controles.forEach(c => {
+            c.disabled = true;
+            c.removeAttribute('required');
+            c.value = "";
+        });
+    } else {
+        fila.classList.add('fila-ausente');
+        controles.forEach(c => {
+            c.disabled = true;
+            c.removeAttribute('required');
+            c.value = "";
+        });
+    }
 }
 </script>
 {% endblock %}

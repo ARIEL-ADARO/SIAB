@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container mt-4">
+    <!-- CABECERA DE ACADEMIA -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='img/Bomberos.png') }}" style="height: 80px; width: auto;" alt="Logo">
+                </div>
+                <div class="col-md-7">
+                    <h2 class="mb-0">{{ bombero.apellido }}, {{ bombero.nombre }}</h2>
+                    <p class="text-muted mb-0"><strong>Jerarquía:</strong> {{ bombero.jerarquia }} | <strong>Legajo:</strong> {{ bombero.legajo }}</p>
+                </div>
+                <div class="col-md-3 text-end">
+                    <div class="p-2 border rounded bg-light">
+                        <small class="d-block text-uppercase">Asistencia Anual</small>
+                        <span class="h4 mb-0">{{ asistencia_pct }}%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CUERPO PRINCIPAL: NOTAS DE CLASES -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-danger text-white d-flex justify-content-between">
+            <h5 class="mb-0">Historial de Calificaciones (Programa Obligatorio)</h5>
+            <span>Promedio General: <strong>{{ promedio }}</strong></span>
+        </div>
+        <div class="card-body">
+            <table class="table table-bordered table-hover">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Materia / Posta / Calificador</th>
+                        <th class="text-center">Calificación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nota in notas_academia %}
+                    <tr>
+                        <td>{{ nota.fecha.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ nota.descripcion }}</td>
+                        <td class="text-center"><strong>{{ nota.nota }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-center">No hay calificaciones registradas en Academia.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- SECCIÓN COMPLEMENTARIA: CURSOS (ACTIVIDADES) -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">Formación Complementaria (Cursos y Capacitaciones)</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Actividad / Curso</th>
+                        <th>Fecha</th>
+                        <th class="text-center">Horas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for curso in cursos_actividades %}
+                    <tr>
+                        <td>{{ curso.nombre }}</td>
+                        <td>{{ curso.fecha.strftime('%d/%m/%Y') }}</td>
+                        <td class="text-center">{{ curso.horas }} hs</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="2" class="text-end"><strong>Total Horas Acumuladas:</strong></td>
+                        <td class="text-center"><strong>{{ total_horas }} hs</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- AREA DE FIRMAS (Para impresión) -->
+    <div class="row mt-5 pt-4 text-center d-none d-print-flex">
+        <div class="col-6">
+            <div style="border-top: 1px solid #000; width: 80%; margin: 0 auto;"></div>
+            <p class="mt-2 mb-0"><strong>{{ jefe_dotacion.nombre }}</strong></p>
+            <small>{{ jefe_dotacion.jerarquia }} - Jefe de Dotación</small>
+        </div>
+        <div class="col-6">
+            <div style="border-top: 1px solid #000; width: 80%; margin: 0 auto;"></div>
+            <p class="mt-2 mb-0"><strong>{{ cuartelero.nombre }}</strong></p>
+            <small>Cuartelero de Turno</small>
+        </div>
+    </div>
+</div>
+{% endblock %}
