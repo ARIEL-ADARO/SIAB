@@ -1,102 +1,112 @@
 {% extends "base.html" %}
 {% block contenido %}
-<div class="container mt-4">
-    <!-- CABECERA DE ACADEMIA -->
-    <div class="card shadow mb-4">
-        <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-2 text-center">
-                    <img src="{{ url_for('static', filename='img/Bomberos.png') }}" style="height: 80px; width: auto;" alt="Logo">
+<div class="container-fluid mt-3">
+    <!-- Encabezado y Totales -->
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h2 class="fw-bold text-danger"><i class="fas fa-graduation-cap"></i> Mi Academia</h2>
+            <p class="text-muted">Historial de capacitación de {{ bombero.nombre }} {{ bombero.apellido }}</p>
+        </div>
+        <div class="col-md-6">
+            <div class="row g-2">
+                <div class="col-4">
+                    <div class="card bg-dark text-white text-center p-2 border-0 shadow-sm">
+                        <small>Promedio</small>
+                        <div class="fs-4 fw-bold text-warning">{{ promedio }}</div>
+                    </div>
                 </div>
-                <div class="col-md-7">
-                    <h2 class="mb-0">{{ bombero.apellido }}, {{ bombero.nombre }}</h2>
-                    <p class="text-muted mb-0"><strong>Jerarquía:</strong> {{ bombero.jerarquia }} | <strong>Legajo:</strong> {{ bombero.legajo }}</p>
+                <div class="col-4">
+                    <div class="card bg-danger text-white text-center p-2 border-0 shadow-sm">
+                        <small>Salidas</small>
+                        <div class="fs-4 fw-bold">{{ total_salidas }}</div>
+                    </div>
                 </div>
-                <div class="col-md-3 text-end">
-                    <div class="p-2 border rounded bg-light">
-                        <small class="d-block text-uppercase">Asistencia Anual</small>
-                        <span class="h4 mb-0">{{ asistencia_pct }}%</span>
+                <div class="col-4">
+                    <div class="card bg-primary text-white text-center p-2 border-0 shadow-sm">
+                        <small>Puntos Op.</small>
+                        <div class="fs-4 fw-bold">{{ total_puntos_operativos }}</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- CUERPO PRINCIPAL: NOTAS DE CLASES -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-danger text-white d-flex justify-content-between">
-            <h5 class="mb-0">Historial de Calificaciones (Programa Obligatorio)</h5>
-            <span>Promedio General: <strong>{{ promedio }}</strong></span>
+    <div class="row">
+        <!-- Columna Izquierda: Gráfica de Tendencia -->
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-chart-line me-2"></i>Evolución Académica</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="graficaTendencia" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <table class="table table-bordered table-hover">
-                <thead class="table-secondary">
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Materia / Posta / Calificador</th>
-                        <th class="text-center">Calificación</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for nota in notas_academia %}
-                    <tr>
-                        <td>{{ nota.fecha.strftime('%d/%m/%Y') }}</td>
-                        <td>{{ nota.descripcion }}</td>
-                        <td class="text-center"><strong>{{ nota.nota }}</strong></td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="3" class="text-center">No hay calificaciones registradas en Academia.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
 
-    <!-- SECCIÓN COMPLEMENTARIA: CURSOS (ACTIVIDADES) -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0">Formación Complementaria (Cursos y Capacitaciones)</h5>
-        </div>
-        <div class="card-body">
-            <table class="table table-sm">
-                <thead>
-                    <tr>
-                        <th>Actividad / Curso</th>
-                        <th>Fecha</th>
-                        <th class="text-center">Horas</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for curso in cursos_actividades %}
-                    <tr>
-                        <td>{{ curso.nombre }}</td>
-                        <td>{{ curso.fecha.strftime('%d/%m/%Y') }}</td>
-                        <td class="text-center">{{ curso.horas }} hs</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="table-light">
-                        <td colspan="2" class="text-end"><strong>Total Horas Acumuladas:</strong></td>
-                        <td class="text-center"><strong>{{ total_horas }} hs</strong></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <!-- AREA DE FIRMAS (Para impresión) -->
-    <div class="row mt-5 pt-4 text-center d-none d-print-flex">
-        <div class="col-6">
-            <div style="border-top: 1px solid #000; width: 80%; margin: 0 auto;"></div>
-            <p class="mt-2 mb-0"><strong>{{ jefe_dotacion.nombre }}</strong></p>
-            <small>{{ jefe_dotacion.jerarquia }} - Jefe de Dotación</small>
-        </div>
-        <div class="col-6">
-            <div style="border-top: 1px solid #000; width: 80%; margin: 0 auto;"></div>
-            <p class="mt-2 mb-0"><strong>{{ cuartelero.nombre }}</strong></p>
-            <small>Cuartelero de Turno</small>
+        <!-- Columna Derecha: Tabla de Notas -->
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-list me-2"></i>Últimas Capacitaciones</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tema / Capacitación</th>
+                                    <th class="text-center">Nota</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for n in notas_academia %}
+                                <tr>
+                                    <td><small class="text-muted">{{ n.fecha.strftime('%d/%m/%Y') if n.fecha else '-' }}</small></td>
+                                    <td class="fw-bold">{{ n.descripcion }}</td>
+                                    <td class="text-center">
+                                        <span class="badge {% if n.nota >= 7 %}bg-success{% elif n.nota >= 4 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">
+                                            {{ n.nota }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Script de la Gráfica -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const ctx = document.getElementById('graficaTendencia');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ fechas_grafica | tojson }},
+            datasets: [{
+                label: 'Nota Obtenida',
+                data: {{ valores_grafica | tojson }},
+                borderColor: '#dc3545',
+                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointBackgroundColor: '#dc3545'
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, max: 10, ticks: { stepSize: 1 } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+</script>
 {% endblock %}

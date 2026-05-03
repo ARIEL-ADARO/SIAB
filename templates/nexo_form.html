@@ -1,153 +1,136 @@
 {% extends "base.html" %}
 
 {% block contenido %}
+<!-- Mantenemos tus estilos CSS intactos -->
 <style>
-    /* Estilos para Tablet y Encabezados Fijos */
-    .table-responsive {
-        max-height: 70vh; 
-        overflow-y: auto;
-    }
-
-    /* Encabezado Fijo con Línea Separadora Roja */
+    .table-responsive { max-height: 70vh; overflow-y: auto; }
     .sticky-header th {
-        position: sticky;
-        top: 0;
-        background-color: #212529 !important; /* Negro */
-        color: #ffc107 !important; /* Amarillo */
+        position: sticky; top: 0;
+        background-color: #212529 !important;
+        color: #ffc107 !important;
         z-index: 10;
-        border-bottom: 5px solid #dc3545 !important; /* Línea roja gruesa */
-        padding: 15px;
-        text-align: center;
+        border-bottom: 5px solid #dc3545 !important;
+        padding: 15px; text-align: center;
     }
-
-    /* Botones de Asistencia Táctiles (Grandes) */
-    .btn-asistencia {
-        width: 100%;
-        margin-bottom: 5px;
-        font-weight: bold;
-        font-size: 0.8rem;
-    }
-
-    /* Estilos de fila según el estado seleccionado */
-    .fila-presente { background-color: #e8f5e9 !important; }  /* Verde muy claro */
-    .fila-justificado { background-color: #fffde7 !important; } /* Amarillo muy claro */
-    .fila-ausente { background-color: #ffebee !important; opacity: 0.8; } /* Rojo muy claro */
-
-    /* Para que los selects se vean bien en pantallas táctiles */
-    .form-select-lg-mobile {
-        padding: 10px;
-        border-radius: 8px;
-    }
+    .btn-asistencia { width: 100%; margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; }
+    .fila-presente { background-color: #e8f5e9 !important; }
+    .fila-justificado { background-color: #fffde7 !important; }
+    .fila-ausente { background-color: #ffebee !important; opacity: 0.8; }
 </style>
 
-<div class="container-fluid mt-3 mb-5">
-    <div class="card shadow border-0">
-        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-3">
-            <h4 class="mb-0"><i class="bi bi-fire"></i> SIAB - Registro de Salida</h4>
-            <a href="{{ url_for('listado_siniestros') }}" class="btn btn-outline-light btn-sm">
-                <i class="bi bi-arrow-left"></i> VOLVER
-            </a>
-        </div>
-        
-        <div class="card-body">
-            <form action="{{ url_for('nueva_planilla_nexo') }}" method="POST">
-                
-                <!-- Datos del Siniestro -->
-                <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm border-start border-danger border-5">
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Nro Parte RUBA</label>
-                        <input type="text" name="nro_parte" class="form-control border-danger" required>
+<!-- AGREGAMOS ESTA ESTRUCTURA DE COLUMNAS -->
+<div class="container-fluid">
+    <div class="row">
+        <!-- Espacio para el Sidebar (col-2) y el Contenido (col-10) -->
+        <div class="col-lg-10 offset-lg-2 col-md-9 offset-md-3 main-content">
+            
+            <div class="container-fluid mt-3 mb-5">
+                <div class="card shadow border-0">
+                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-3">
+                        <h4 class="mb-0"><i class="bi bi-fire"></i> SIAB - Registro de Salida</h4>
+                        <a href="{{ url_for('listado_siniestros') }}" class="btn btn-outline-light btn-sm">
+                            <i class="bi bi-arrow-left"></i> VOLVER
+                        </a>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold small text-danger">Tipo de Siniestro</label>
-                        <select name="tipo_siniestro_id" class="form-select border-danger" required>
-                            <option value="">-- Seleccionar --</option>
-                            {% for t in tipos_siniestros %}
-                                <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small">Ubicación / Lugar</label>
-                        <input type="text" name="lugar" class="form-control border-danger" placeholder="Ej: Calle San Martín 123" required>
-                    </div>
-                </div>
-
-                <!-- Tabla de Personal Operativo -->
-                <div class="table-responsive bg-white rounded shadow-sm border">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="sticky-header">
-                            <tr style="border-bottom: 5px solid #dc3545;"> <!-- Línea roja separadora -->
-                                <th class="text-center" style="width: 280px; background-color: #212529; color: #ffc107;">ASISTENCIA</th>
-                                <th style="background-color: #212529; color: #ffc107;">BOMBERO</th>
-                                <th style="background-color: #212529; color: #ffc107;">MÓVIL</th>
-                                <th style="background-color: #212529; color: #ffc107;">ROL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for b in bomberos %}
-                            <tr id="fila_{{ b.legajo }}">
-                                <td>
-                                    <!-- TRES BOTONES CLAROS: SALIÓ, JUSTIFICADO, NO -->
-                                    <div class="btn-group w-100" role="group">
-                                        <!-- OPCIÓN 1: PRESENTE (SALIÓ) -->
-                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
-                                            id="p_{{ b.legajo }}" value="PRESENTE" onchange="actualizar('{{ b.legajo }}', 'PRESENTE')">
-                                        <label class="btn btn-outline-success fw-bold" for="p_{{ b.legajo }}">SALIÓ</label>
-
-                                        <!-- OPCIÓN 2: AUSENTE JUSTIFICADO (LA QUE BUSCAMOS) -->
-                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
-                                            id="j_{{ b.legajo }}" value="JUSTIFICADO" onchange="actualizar('{{ b.legajo }}', 'JUSTIFICADO')">
-                                        <label class="btn btn-outline-warning fw-bold text-dark" for="j_{{ b.legajo }}">JUSTIF.</label>
-
-                                        <!-- OPCIÓN 3: AUSENTE (NO ESTÁ) -->
-                                        <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
-                                            id="a_{{ b.legajo }}" value="AUSENTE" onchange="actualizar('{{ b.legajo }}', 'AUSENTE')" checked>
-                                        <label class="btn btn-outline-danger fw-bold" for="a_{{ b.legajo }}">NO</label>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="fw-bold text-uppercase">{{ b.apellido }}, {{ b.nombre }}</div>
-                                    <span class="badge bg-dark">Legajo {{ b.legajo }}</span>
-                                </td>
-                                <td>
-                                    <select name="movil_{{ b.legajo }}" id="movil_{{ b.legajo }}" class="form-select ctrl-{{ b.legajo }}" disabled>
-                                        <option value="" disabled selected>Móvil...</option>
-                                        <option value="Móvil 1">Móvil 1</option>
-                                        <option value="Móvil 43/5">Móvil 43/5</option>
-                                        <option value="Propio">Propio</option>
+                    
+                    <div class="card-body">
+                        <form action="{{ url_for('nueva_planilla_nexo') }}" method="POST">
+                            
+                            <!-- Datos del Siniestro -->
+                            <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm border-start border-danger border-5">
+                                <div class="col-md-2">
+                                    <label class="form-label fw-bold small">Nro Parte RUBA</label>
+                                    <input type="text" name="nro_parte" class="form-control border-danger" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold small text-danger">Tipo de Siniestro</label>
+                                    <select name="tipo_siniestro_id" class="form-select border-danger" required>
+                                        <option value="">-- Seleccionar --</option>
+                                        {% for t in tipos_siniestros %}
+                                            <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
+                                        {% endfor %}
                                     </select>
-                                </td>
-                                <td>
-                                    <select name="rol_{{ b.legajo }}" id="rol_{{ b.legajo }}" class="form-select ctrl-{{ b.legajo }}" disabled>
-                                        <option value="BOMBERO">BOMBERO</option>
-                                        <option value="CHOFER">CHOFER</option>
-                                        <option value="JEFE DE DOTACION">JEFE DE DOTACIÓN</option>
-                                        <option value="CUARTELERO">CUARTELERO</option>
-                                    </select>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">Ubicación / Lugar</label>
+                                    <input type="text" name="lugar" class="form-control border-danger" placeholder="Ej: Calle San Martín 123" required>
+                                </div>
+                            </div>
 
-                <div class="mt-4">
-                    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 shadow fw-bold">
-                        <i class="bi bi-save"></i> GUARDAR REGISTRO DE SALIDA
-                    </button>
+                            <!-- Tabla de Personal Operativo -->
+                            <div class="table-responsive bg-white rounded shadow-sm border">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="sticky-header">
+                                        <tr>
+                                            <th class="text-center" style="width: 280px;">ASISTENCIA</th>
+                                            <th>BOMBERO</th>
+                                            <th>MÓVIL</th>
+                                            <th>ROL</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for b in bomberos %}
+                                        <tr id="fila_{{ b.legajo }}">
+                                            <td>
+                                                <div class="btn-group w-100" role="group">
+                                                    <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                                        id="p_{{ b.legajo }}" value="PRESENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'PRESENTE')">
+                                                    <label class="btn btn-outline-success fw-bold" for="p_{{ b.legajo }}">SALIÓ</label>
+
+                                                    <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                                        id="j_{{ b.legajo }}" value="JUSTIFICADO" onchange="actualizarInterfaz('{{ b.legajo }}', 'JUSTIFICADO')">
+                                                    <label class="btn btn-outline-warning fw-bold text-dark" for="j_{{ b.legajo }}">JUSTIF.</label>
+
+                                                    <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
+                                                        id="a_{{ b.legajo }}" value="AUSENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'AUSENTE')" checked>
+                                                    <label class="btn btn-outline-danger fw-bold" for="a_{{ b.legajo }}">NO</label>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold text-uppercase">{{ b.apellido }}, {{ b.nombre }}</div>
+                                                <span class="badge bg-dark">Legajo {{ b.legajo }}</span>
+                                            </td>
+                                            <td>
+                                                <select name="movil_{{ b.legajo }}" id="movil_{{ b.legajo }}" class="form-select select-control-{{ b.legajo }}" disabled>
+                                                    <option value="" disabled selected>Móvil...</option>
+                                                    <option value="Móvil 1">Móvil 1</option>
+                                                    <option value="Móvil 43/5">Móvil 43/5</option>
+                                                    <option value="Propio">Propio</option>
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <select name="rol_{{ b.legajo }}" id="rol_{{ b.legajo }}" class="form-select select-control-{{ b.legajo }}" disabled>
+                                                    <option value="BOMBERO">BOMBERO</option>
+                                                    <option value="CHOFER">CHOFER</option>
+                                                    <option value="JEFE DE DOTACION">JEFE DE DOTACIÓN</option>
+                                                    <option value="CUARTELERO">CUARTELERO</option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-4">
+                                <button type="submit" class="btn btn-danger btn-lg w-100 py-3 shadow fw-bold">
+                                    <i class="bi bi-save"></i> GUARDAR REGISTRO DE SALIDA
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-            </form>
-        </div>
-    </div>
+            </div>
+        </div> <!-- Fin col-10 -->
+    </div> <!-- Fin row -->
 </div>
 
 <script>
+// Corregí el nombre de la clase en el selector para que coincida con el HTML (select-control-)
 function actualizarInterfaz(legajo, estado) {
     let fila = document.getElementById('fila_' + legajo);
     let controles = document.querySelectorAll('.select-control-' + legajo);
     
-    // Resetear clases
     fila.classList.remove('fila-presente', 'fila-justificado', 'fila-ausente');
 
     if (estado === 'PRESENTE') {

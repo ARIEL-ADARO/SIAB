@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2><i class="fas fa-user-shield"></i> Gestión de Cargos y Responsabilidades</h2>
+    <hr>
+    
+    <!-- 1. BLOQUE DE ALTA (El que pasaste tú) -->
+    <div class="card shadow-sm mb-5">
+        <div class="card-header bg-danger text-white">
+            <i class="fas fa-plus-circle"></i> Asignar Nuevo Cargo
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('guardar_cargo') }}" method="POST">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="legajo" class="form-label">Seleccionar Bombero:</label>
+                        <select class="form-select" name="legajo" required>
+                            <option value="" selected disabled>Seleccione un efectivo...</option>
+                            {% for b in bomberos %}
+                            <option value="{{ b.legajo }}">{{ b.username }} (Legajo: {{ b.legajo }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="area" class="form-label">Área / Tarea Especial:</label>
+                        <select class="form-select" name="area" required>
+                            <option value="moviles">Encargado de Móviles</option>
+                            <option value="materiales">Encargado de Materiales y Equipos</option>
+                            <option value="comunicaciones">Encargado de Comunicaciones VHF</option>
+                            <option value="prensa">Encargado de Prensa y Difusión</option>
+                            <option value="admin">Encargado Administrativo</option>
+                            <option value="edificio">Encargado de Edificio</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="observaciones" class="form-label">Observaciones:</label>
+                    <textarea class="form-control" name="observaciones" rows="2"></textarea>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-save"></i> Asignar y Registrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. BLOQUE DE LISTADO Y BAJA (La tabla de cargos activos) -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <i class="fas fa-list"></i> Cargos Actualmente Activos
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Bombero</th>
+                            <th>Área</th>
+                            <th>Desde</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cargo in cargos_activos %}
+                        <tr>
+                            <td>{{ cargo.username }} (Legajo: {{ cargo.legajo }})</td>
+                            <td><span class="badge bg-info text-dark">{{ cargo.area.upper() }}</span></td>
+                            <td>{{ cargo.fecha_inicio }}</td>
+                            <td>
+                                <form action="{{ url_for('finalizar_cargo') }}" method="POST" style="display:inline;">
+                                    <input type="hidden" name="id_historial" value="{{ cargo.id }}">
+                                    <input type="hidden" name="legajo" value="{{ cargo.legajo }}">
+                                    <input type="hidden" name="area" value="{{ cargo.area }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Finalizar esta responsabilidad?')">
+                                        Finalizar Cargo
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

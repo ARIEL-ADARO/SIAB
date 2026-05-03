@@ -7,26 +7,48 @@
         <h4 class="mb-0 fw-bold"><i class="bi bi-diagram-3"></i> Departamentos</h4>
         <small class="text-muted">Grupos especializados del cuerpo</small>
     </div>
+    <!-- Solo el ADMIN puede ver el botón de agregar -->
+    {% if session.rol == 'ADMIN' %}
+    <button class="btn btn-danger btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoDepto">
+        <i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nuevo</span>
+    </button>
+    {% endif %}
 </div>
 
 <div class="row g-3">
 {% for d in departamentos %}
-<div class="col-12 col-md-6 col-lg-4">
+<div class="col-12 col-sm-6 col-lg-3"> <!-- Tamaño reducido para evitar que sobren espacios -->
     <div class="card h-100 shadow-sm border-0">
-        <div class="card-body">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-                <h6 class="fw-bold mb-0 text-uppercase" style="font-size: 0.85rem;">{{ d.nombre }}</h6>
-                <span class="badge bg-primary rounded-pill">{{ d.miembros }} miembros</span>
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="fw-bold mb-0 text-uppercase text-truncate" style="font-size: 0.8rem; max-width: 70%;">{{ d.nombre }}</h6>
+                <span class="badge bg-dark rounded-pill" style="font-size: 0.65rem;">{{ d.miembros }}</span>
             </div>
-            <p class="text-muted small mb-3" style="min-height: 40px;">{{ d.descripcion or 'Sin descripción disponible.' }}</p>
             
-            <div class="border-top pt-3">
+            <p class="text-muted small mb-3 text-truncate-2" style="font-size: 0.75rem; height: 35px;">
+                {{ d.descripcion or 'Sin descripción disponible.' }}
+            </p>
+            
+            <div class="d-grid gap-2 border-top pt-2">
                 {% if session.rol == 'ADMIN' %}
-                    <a href="{{ url_for('miembros_departamento', depto_id=d.id) }}" class="btn btn-warning btn-sm w-100 fw-bold">
-                        <i class="bi bi-person-gear"></i> Gestionar Personal
+                    <a href="{{ url_for('miembros_departamento', depto_id=d.id) }}" class="btn btn-warning btn-sm fw-bold py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-person-gear"></i> Personal
                     </a>
+                    <div class="d-flex gap-1">
+                        <!-- Botón Editar Nombre/Descripción -->
+                        <button class="btn btn-outline-secondary btn-sm flex-grow-1" style="font-size: 0.7rem;" 
+                                onclick="prepararEdicion('{{ d.id }}', '{{ d.nombre }}', '{{ d.descripcion }}')">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <!-- Botón Dar de Baja -->
+                        <form action="{{ url_for('eliminar_departamento', id=d.id) }}" method="POST" class="flex-grow-1" onsubmit="return confirm('¿Dar de baja este departamento?')">
+                            <button type="submit" class="btn btn-outline-danger btn-sm w-100" style="font-size: 0.7rem;">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
                 {% else %}
-                    <a href="{{ url_for('ver_miembros', id=d.id) }}" class="btn btn-outline-info btn-sm w-100">
+                    <a href="{{ url_for('ver_miembros', id=d.id) }}" class="btn btn-outline-info btn-sm w-100" style="font-size: 0.75rem;">
                         <i class="bi bi-eye"></i> Ver Integrantes
                     </a>
                 {% endif %}
@@ -35,12 +57,59 @@
     </div>
 </div>
 {% else %}
-<div class="col-12">
-    <div class="alert alert-light border text-center py-5">
+<div class="col-12 text-center py-5">
+    <div class="alert alert-light border shadow-sm">
         <i class="bi bi-info-circle fs-2 d-block mb-2 text-muted"></i>
-        No hay departamentos activos registrados en el sistema.
+        No hay departamentos registrados.
     </div>
 </div>
 {% endfor %}
 </div>
+
+<!-- MODAL PARA NUEVO / EDITAR DEPARTAMENTO -->
+<div class="modal fade" id="modalNuevoDepto" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form action="{{ url_for('guardar_departamento') }}" method="POST" class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white border-0">
+                <h5 class="modal-title fw-bold" id="modalTitle">Nuevo Departamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="id" id="depto_id">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Nombre</label>
+                    <input type="text" name="nombre" id="depto_nombre" class="form-control" required placeholder="Ej: Incendios Forestales">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Descripción</label>
+                    <textarea name="descripcion" id="depto_desc" class="form-control" rows="3" placeholder="Breve detalle del área..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-danger fw-bold">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function prepararEdicion(id, nombre, desc) {
+    document.getElementById('modalTitle').innerText = 'Editar Departamento';
+    document.getElementById('depto_id').value = id;
+    document.getElementById('depto_nombre').value = nombre;
+    document.getElementById('depto_desc').value = desc;
+    var modal = new bootstrap.Modal(document.getElementById('modalNuevoDepto'));
+    modal.show();
+}
+</script>
+
+<style>
+    .text-truncate-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;  
+        overflow: hidden;
+    }
+</style>
 {% endblock %}

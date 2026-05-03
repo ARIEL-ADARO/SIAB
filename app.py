@@ -7,6 +7,7 @@ App Flask principal - Etapa 2 v2
 from flask import Flask, render_template, request, redirect, url_for, send_file, session, flash, jsonify
 import mysql.connector
 from mysql.connector import Error
+from functools import wraps
 from datetime import datetime
 import os
 import pandas as pd  # Importante para el reporte Excel
@@ -14,11 +15,17 @@ from io import BytesIO
 from database import get_db
 
 # ReportLab para el PDF institucional
-from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.pagesizes import landscape, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer
+
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, HRFlowable
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
+from datetime import datetime
+import os
 
 # Definición de ruta base
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -731,19 +738,73 @@ def departamentos():
     conn = get_db()
     lista = []
     if conn:
-        cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT d.*, COUNT(bd.id) as miembros
-            FROM departamentos d
-            LEFT JOIN bombero_departamento bd ON d.id = bd.departamento_id AND bd.activo = 1
-            WHERE d.activo = 1
-            GROUP BY d.id
-            ORDER BY d.nombre
-        """)
-        lista = cur.fetchall()
-        conn.close()
+        try:
+            cur = conn.cursor(dictionary=True)
+            # Tu consulta está perfecta: filtra deptos activos y cuenta miembros activos
+            cur.execute("""
+                SELECT d.*, COUNT(bd.id) as miembros
+                FROM departamentos d
+                LEFT JOIN bombero_departamento bd ON d.id = bd.departamento_id AND bd.activo = 1
+                WHERE d.activo = 1
+                GROUP BY d.id
+                ORDER BY d.nombre
+            """)
+            lista = cur.fetchall()
+        except Exception as e:
+            print(f"Error al obtener departamentos: {e}")
+        finally:
+            conn.close()
     return render_template("departamentos.html", departamentos=lista)
 
+@app.route("/departamentos/guardar", methods=["POST"])
+@login_requerido  # Asegúrate de que use el nombre correcto
+def guardar_departamento():
+    if session.get('rol') != 'ADMIN':
+        return redirect(url_for('inicio'))
+        
+    depto_id = request.form.get('id')
+    nombre = request.form.get('nombre')
+    descripcion = request.form.get('descripcion')
+    
+    # --- CORRECCIÓN AQUÍ ---
+    conn = get_db()
+    if conn:
+        try:
+            cur = conn.cursor()
+            if depto_id: # Editar existente
+                cur.execute("UPDATE departamentos SET nombre = %s, descripcion = %s WHERE id = %s", 
+                           (nombre, descripcion, depto_id))
+            else: # Nuevo
+                cur.execute("INSERT INTO departamentos (nombre, descripcion, activo) VALUES (%s, %s, 1)", 
+                           (nombre, descripcion))
+            
+            conn.commit()
+        except Exception as e:
+            print(f"Error al guardar: {e}")
+        finally:
+            conn.close()
+    # -----------------------
+    
+    return redirect(url_for('departamentos'))
+
+@app.route("/departamentos/eliminar/<int:id>", methods=["POST"])
+@login_requerido
+def eliminar_departamento(id):
+    # Solo permitimos que el ADMIN realice esta acción
+    if session.get('rol') != 'ADMIN':
+        return redirect(url_for('inicio'))
+        
+    conn = get_db()
+    if conn:
+        try:
+            cur = conn.cursor()
+            # Cambiamos el estado a 0 (Baja Lógica)
+            cur.execute("UPDATE departamentos SET activo = 0 WHERE id = %s", (id,))
+            conn.commit()
+        finally:
+            conn.close()
+            
+    return redirect(url_for('departamentos'))
 
 @app.route("/departamentos/gestionar/<int:depto_id>")
 @login_requerido
@@ -997,18 +1058,25 @@ def asistencia_bomberos_json():
 # CONFIGURACIÓN DE PUNTOS
 # ============================================================
 
+from datetime import datetime
+
 @app.route("/config/puntos")
 @login_requerido
 @rol_requerido("ADMIN")
 def config_puntos():
     conn = get_db()
     registros = []
+    # Obtenemos el año actual para el formulario
+    now_year = datetime.now().year 
+    
     if conn:
         cur = conn.cursor(dictionary=True)
         cur.execute("SELECT * FROM config_puntos ORDER BY anio DESC")
         registros = cur.fetchall()
         conn.close()
-    return render_template("config_puntos.html", registros=registros)
+    
+    # Pasamos 'now_year' al template
+    return render_template("config_puntos.html", registros=registros, now_year=now_year)
 
 
 @app.route("/config/puntos/guardar", methods=["POST"])
@@ -1456,9 +1524,9 @@ def mi_perfil():
     conn.close()
     return render_template("mi_perfil.html", datos=datos_perfil)
 
-@app.route("/mesa-calificadora")
 @login_requerido
-@rol_requerido('ADMIN', 'JEFATURA')
+@rol_requerido('ADMIN', 'JEFATURA', 'OFICIAL', 'SUB-OFICIAL')
+@app.route("/mesa-calificadora", methods=["GET", "POST"])
 def mesa_calificadora():
     # 1. Identificación del usuario
     mi_grado = session.get("grado", "").upper()
@@ -1518,6 +1586,39 @@ def mesa_calificadora():
     
     return render_template("mesa_calificadora.html", bomberos=bomberos)
 
+@login_requerido
+@rol_requerido('ADMIN', 'JEFATURA')
+@app.route("/mesa-calificadora/cerrar-ciclo", methods=["POST"])
+def cerrar_ciclo_anual():
+    conn = get_db()
+    if not conn:
+        flash("Error de conexión a la base de datos.", "danger")
+        return redirect(url_for('mesa_calificadora'))
+    
+    try:
+        cur = conn.cursor()
+        # 1. Pasamos la nota_actual a nota_anterior_puntos
+        # 2. Seteamos nota_actual en 0 para el nuevo ciclo
+        # 3. Limpiamos las observaciones para el nuevo año
+        cur.execute("""
+            UPDATE calificaciones_cualidades 
+            SET anio_anterior_puntos = nota_cualidades,
+                nota_cualidades = 0,
+                observacion = ''
+        """)
+        
+        conn.commit()
+        flash("Ciclo anual cerrado con éxito. Las notas han sido archivadas en el historial.", "success")
+    
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error al cerrar el ciclo: {str(e)}", "danger")
+    
+    finally:
+        conn.close()
+        
+    return redirect(url_for('mesa_calificadora'))
+
 @app.route("/dashboard")
 @login_requerido
 def dashboard():
@@ -1537,30 +1638,6 @@ def dashboard():
     conn.close()
     
     return render_template("dashboard.html", en_riesgo=personal_en_riesgo)
-
-@app.route("/mesa-calificadora/cerrar-ciclo", methods=["POST"])
-@login_requerido
-def cerrar_ciclo_anual():
-    # Verificación de seguridad: Solo Jefatura o Admin
-    if session.get('grado') != 'JEFATURA' and session.get('rol') != 'ADMIN':
-        return "Acceso denegado", 403
-    
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        # Pasamos la nota que sacaron este año a la columna de año anterior
-        cur.execute("UPDATE calificaciones_cualidades SET anio_anterior_puntos = nota_cualidades")
-        # Opcional: Podrías resetear la nota actual a 0 para empezar el nuevo año
-        # cur.execute("UPDATE calificaciones_cualidades SET nota_cualidades = 0")
-        conn.commit()
-        # Aquí podrías agregar un mensaje de éxito con flash
-    except Exception as e:
-        print(f"Error al cerrar ciclo: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
-        
-    return redirect(url_for('mesa_calificadora'))
 
 @app.route("/departamentos/ver/<int:id>")
 @login_requerido
@@ -1701,6 +1778,45 @@ def mis_actividades():
     
     # Aquí es donde le "pasamos" la lista a la plantilla
     return render_template("actividades.html", actividades=lista_actividades)
+
+@app.route("/actividades")
+@login_requerido
+def ver_actividades():
+    conn = get_db()
+    actividades = []
+    stats = {"total": 0, "horas": 0, "ranking": []}
+    
+    if conn:
+        try:
+            cur = conn.cursor(dictionary=True)
+            # 1. Listado de Actividades Finalizadas (Excluyendo capacitaciones según tu lógica)
+            cur.execute("""
+                SELECT e.id, e.fecha as fecha_inicio, c.concepto as tipo, 
+                       e.descripcion, c.concepto as concepto_nombre
+                FROM eventos e 
+                LEFT JOIN conceptos c ON e.concepto_id = c.id 
+                WHERE e.estado = 'FINALIZADO' 
+                AND c.concepto NOT IN ('CAPACITACIÓN', 'CURSO')
+                ORDER BY e.fecha DESC LIMIT 10
+            """)
+            actividades = cur.fetchall()
+
+            # 2. Estadísticas para los Gráficos (Dashboard)
+            # Contamos cuántas actividades hubo por concepto
+            cur.execute("""
+                SELECT c.concepto, COUNT(e.id) as cantidad
+                FROM eventos e
+                JOIN conceptos c ON e.concepto_id = c.id
+                WHERE e.estado = 'FINALIZADO'
+                GROUP BY c.concepto
+            """)
+            stats['ranking'] = cur.fetchall()
+            stats['total'] = len(actividades)
+            
+        finally:
+            conn.close()
+    
+    return render_template("actividades_dashboard.html", actividades=actividades, stats=stats)
 
 from datetime import datetime, date
 import calendar
@@ -2099,8 +2215,12 @@ def calificar_salida(id):
             flash(f"Error al procesar puntos: {e}", "danger")
 
     # --- MÉTODO GET ---
-    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
-    siniestro = cur.fetchone()
+    anio_siniestro = siniestro['fecha'].year # O usa datetime.now().year
+    cur.execute("SELECT puntos_por_asistencia FROM config_puntos WHERE anio = %s", (anio_siniestro,))
+    config = cur.fetchone()
+
+    # Si no hay configuración para ese año, usamos un valor por defecto (ej: 1.0)
+    puntos_sugeridos = config['puntos_por_asistencia'] if config else 1.0
 
     # Ajustado para que use tu tabla 'legajos'
     cur.execute("""
@@ -2125,56 +2245,55 @@ def panel_sistema():
     return render_template("admin_sistema.html")
 
 @app.route('/admin/backup')
+@login_requerido # Usando tus decoradores de seguridad
+@rol_requerido("ADMIN")
 def ejecutar_backup():
-    if session.get('rol') != 'ADMIN':
-        return redirect(url_for('inicio'))
-
     try:
         db_user = DB_CONFIG['user']
         db_pass = DB_CONFIG['password']
         db_name = DB_CONFIG['database']
         
+        # Ruta consistente con tu instalador SIAB
         folder = r"C:\SIAB\backups"
-        if not os.path.exists(folder): os.makedirs(folder)
+        if not os.path.exists(folder): 
+            os.makedirs(folder)
 
         fecha = datetime.now().strftime("%Y-%m-%d_%H-%M")
         filename = f"backup_{db_name}_{fecha}.sql"
         filepath = os.path.join(folder, filename)
 
-        # --- BUSCADOR DEL EJECUTABLE ---
+        # Buscador de binarios (Excelente lógica de portabilidad)
         posibles_rutas = [
             r"C:\xampp\mysql\bin\mysqldump.exe",
             r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe",
             r"C:\Program Files\MySQL\MySQL Server 8.1\bin\mysqldump.exe",
-            "mysqldump" # Si está en el PATH
+            "mysqldump"
         ]
         
-        dump_exe = None
-        for ruta in posibles_rutas:
-            if ruta == "mysqldump" or os.path.exists(ruta):
-                dump_exe = ruta
-                break
+        dump_exe = next((r for r in posibles_rutas if r == "mysqldump" or os.path.exists(r)), None)
 
         if not dump_exe:
-            flash("No se encontró mysqldump.exe. Verificá la instalación de MySQL/XAMPP.", "danger")
-            return redirect(url_for('inicio'))
-        # -------------------------------
+            flash("No se encontró mysqldump.exe. Verificá la instalación.", "danger")
+            return redirect(url_for('panel_sistema'))
 
+        # Ejecución
         comando = [dump_exe, f"--user={db_user}", f"--password={db_pass}", db_name]
 
         with open(filepath, "w") as out_file:
             resultado = subprocess.run(comando, stdout=out_file, stderr=subprocess.PIPE, text=True)
 
+        # Validamos éxito
         if resultado.returncode != 0:
             if os.path.exists(filepath): os.remove(filepath)
             flash(f"Error de MySQL: {resultado.stderr}", "danger")
         else:
-            flash(f"¡Respaldo exitoso! Guardado en {folder}", "success")
+            flash(f"¡Respaldo exitoso! Archivo: {filename}", "success")
 
     except Exception as e:
         flash(f"Error crítico: {str(e)}", "danger")
     
-    return redirect(url_for('inicio'))
+    # Redirigimos de vuelta al panel de control, no al inicio
+    return redirect(url_for('panel_sistema'))
 
 # ============================================================
 # ACADEMIA BOMBERO
@@ -2185,77 +2304,251 @@ def ejecutar_backup():
 def ver_academia_bombero(legajo):
     conn = get_db()
     if not conn:
-        flash("Error de conexión a la base de datos.", "danger")
+        flash("Error de conexión.", "danger")
         return redirect(url_for('inicio'))
 
     try:
         cur = conn.cursor(dictionary=True)
 
-        # 1. Consulta a la tabla 'legajos' con los nombres de columna reales
-        cur.execute("""
-            SELECT legajo, nombre, apellido, grado, cargo, foto, situacion 
-            FROM legajos 
-            WHERE legajo = %s
-        """, (legajo,))
+        # 1. Datos del bombero (Tabla: legajos)
+        cur.execute("SELECT legajo, nombre, apellido, grado, cargo, foto FROM legajos WHERE legajo = %s", (legajo,))
         bombero = cur.fetchone()
 
         if not bombero:
-            flash(f"No se encontró el legajo {legajo}.", "warning")
+            flash(f"Legajo {legajo} no encontrado.", "warning")
             return redirect(url_for('bomberos'))
 
-        # Mapeo para que el HTML reciba 'jerarquia' aunque en la DB sea 'grado'
         bombero['jerarquia'] = bombero['grado']
 
-        # 2. Notas de ACADEMIA (Basado en tu tabla de nexo)
+        # 2. Notas de ACADEMIA (Ajustado a tu estructura real)
+        # Filtramos por 'PRESENTE' ya que tu ENUM no tiene 'ANULADA'
         cur.execute("""
-            SELECT t.descripcion, ant.nota, a.fecha_registro as fecha
+            SELECT et.nombre AS descripcion, ant.nota, a.fecha_registro as fecha
             FROM asistencia_notas_temas ant
-            JOIN temas t ON ant.tema_id = t.id
+            JOIN evento_temas et ON ant.tema_id = et.id
             JOIN asistencia a ON ant.evento_id = a.evento_id AND ant.legajo = a.legajo
-            WHERE ant.legajo = %s
-            ORDER BY a.fecha_registro DESC
+            WHERE ant.legajo = %s AND a.estado = 'PRESENTE'
+            ORDER BY a.fecha_registro ASC 
         """, (legajo,))
         notas_academia = cur.fetchall()
 
-        # 3. Puntos de SALIDAS (Usando 'puntos_operativos' de nexo_salidas)
+        # 3. Puntos de SALIDAS (Intervenciones reales confirmadas)
         cur.execute("""
-            SELECT siniestro_id, movil, rol, puntos_operativos as puntos
-            FROM nexo_salidas 
-            WHERE legajo = %s AND firma_confirmada = 1
-            ORDER BY id DESC
+            SELECT s.fecha, s.tipo_siniestro as descripcion, p.rol, p.puntos_operativos as puntos
+            FROM nexo_personal p
+            JOIN nexo_siniestros s ON p.siniestro_id = s.id
+            WHERE p.legajo = %s AND p.firma_confirmada = 1
+            ORDER BY s.fecha DESC
         """, (legajo,))
         puntos_salidas = cur.fetchall()
 
-        # 4. Cálculos para los indicadores superiores
-        promedio = 0
-        if notas_academia:
-            promedio = round(sum(n['nota'] for n in notas_academia) / len(notas_academia), 2)
-            
+        # 4. Cálculos de Totales y Preparación de Gráfica
+        # Nota: Usamos float() para asegurar compatibilidad con Chart.js
+        notas_validas = [float(n['nota']) for n in notas_academia if n['nota'] is not None]
+        promedio = round(sum(notas_validas) / len(notas_validas), 2) if notas_validas else 0
+        
         total_puntos_operativos = sum(p['puntos'] for p in puntos_salidas)
+        total_salidas = len(puntos_salidas)
+
+        # Listas para Chart.js
+        fechas_grafica = [n['fecha'].strftime('%d/%m') for n in notas_academia if n['fecha']]
+        valores_grafica = [float(n['nota']) for n in notas_academia if n['nota'] is not None]
 
         return render_template("academia_bombero.html", 
                                bombero=bombero, 
-                               notas_academia=notas_academia,
+                               notas_academia=notas_academia[::-1], 
                                puntos_salidas=puntos_salidas,
                                promedio=promedio,
+                               total_salidas=total_salidas,
                                total_puntos_operativos=total_puntos_operativos,
+                               fechas_grafica=fechas_grafica,
+                               valores_grafica=valores_grafica,
                                jefe_dotacion={"nombre": "Firma Autorizada", "jerarquia": "Jefatura"},
                                cuartelero={"nombre": "Cuartelero de Turno", "jerarquia": "Guardia"})
 
     except Exception as e:
-        # Esto atrapará cualquier otro error de columna (como el 1054)
-        flash(f"Error en el módulo Academia: {e}", "danger")
+        flash(f"Error técnico en Academia: {e}", "danger")
         return redirect(url_for('inicio'))
     finally:
         if conn: conn.close()
 
 # ============================================================
+# PERMISOS
+# ============================================================
+def tiene_permiso(area):
+    # En lugar de current_user, usamos la session de Flask
+    if "usuario_id" not in session:
+        return False
+    
+    rol = str(session.get("rol", "")).upper()
+    
+    # El admin siempre tiene permiso
+    if rol == 'ADMIN':
+        return True
+    
+    # Verificamos si es encargado del área (usando el permiso de la sesión)
+    # Suponiendo que guardas los permisos como 'es_encargado_moviles', etc.
+    permiso_buscado = f'es_encargado_{area}'
+    return session.get(permiso_buscado) == 1
+
+# ============================================================
+# CONTROL DE ACCESO Y PERMISOS
+# ============================================================
+
+def requerir_permiso(permiso_requerido):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if "usuario_id" not in session:
+                flash("Debés iniciar sesión.", "warning")
+                return redirect(url_for("login"))
+            
+            # CORRECCIÓN: Forzamos mayúsculas para que 'ADMIN' sea igual a 'admin'
+            rol_actual = str(session.get("rol", "")).upper()
+            
+            # El administrador siempre tiene acceso total
+            if rol_actual == 'ADMIN':
+                return f(*args, **kwargs)
+            
+            # Verificación de permisos específicos para otros roles
+            conn = get_db()
+            cur = conn.cursor(dictionary=True)
+            cur.execute(f"SELECT {permiso_requerido} FROM usuarios WHERE id = %s", (session["usuario_id"],))
+            usuario = cur.fetchone()
+            conn.close()
+
+            if usuario and usuario.get(permiso_requerido) == 1:
+                return f(*args, **kwargs)
+            
+            flash("Acceso restringido: No eres encargado de esta área.", "danger")
+            return redirect(url_for('inicio'))
+        return decorated_function
+    return decorator
+
+@app.route("/admin/asignar_cargo", methods=['POST'])
+@requerir_permiso('es_encargado_admin')
+def asignar_cargo():
+    legajo = request.form.get('legajo')
+    area = request.form.get('area')
+    
+    # 1. Actualizamos el permiso activo para el login
+    # (Ej: SET es_encargado_moviles = 1)
+    db.execute(f"UPDATE usuarios SET es_encargado_{area} = 1 WHERE legajo = {legajo}")
+    
+    # 2. Guardamos en el historial para el Legajo Digital
+    db.execute("INSERT INTO historial_cargos (legajo, area, fecha_inicio) VALUES (%s, %s, CURDATE())", (legajo, area))
+    
+    flash("Cargo asignado y registrado en el historial.", "success")
+    return redirect(url_for('gestion_personal'))
+
+@app.route("/guardar_cargo", methods=['POST'])
+@login_requerido
+@requerir_permiso('es_encargado_admin')
+def guardar_cargo():
+    legajo = request.form.get('legajo')
+    area = request.form.get('area')
+    observaciones = request.form.get('observaciones')
+    columna_permiso = f"es_encargado_{area}"
+    
+    conn = get_db()
+    if conn:
+        try:
+            cur = conn.cursor()
+            # Actualizar acceso
+            cur.execute(f"UPDATE usuarios SET {columna_permiso} = 1 WHERE legajo = %s", (legajo,))
+            # Registrar historial
+            cur.execute("""
+                INSERT INTO historial_cargos (legajo, area, fecha_inicio, observaciones) 
+                VALUES (%s, %s, CURDATE(), %s)
+            """, (legajo, area, observaciones))
+            conn.commit()
+            flash(f"Cargo de {area} asignado con éxito.", "success")
+        except Error as e:
+            conn.rollback()
+            flash(f"Error: {str(e)}", "danger")
+        finally:
+            conn.close()
+    return redirect(url_for('ver_gestion_cargos'))
+
+@app.route("/finalizar_cargo", methods=['POST'])
+@login_requerido
+@requerir_permiso('es_encargado_admin')
+def finalizar_cargo():
+    id_historial = request.form.get('id_historial')
+    legajo = request.form.get('legajo')
+    area = request.form.get('area') # Ej: 'moviles'
+    
+    columna_permiso = f"es_encargado_{area}"
+    
+    try:
+        # 1. QUITAMOS el acceso inmediato en la tabla USUARIOS
+        query_user = f"UPDATE usuarios SET {columna_permiso} = 0 WHERE legajo = %s"
+        db.execute(query_user, (legajo,))
+        
+        # 2. REGISTRAMOS la fecha de fin en el historial
+        query_historial = """
+            UPDATE historial_cargos 
+            SET fecha_fin = CURDATE() 
+            WHERE id = %s
+        """
+        db.execute(query_historial, (id_historial,))
+        
+        db.commit()
+        flash(f"Se ha finalizado la tarea de {area} para el legajo {legajo}.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        flash(f"Error al finalizar cargo: {str(e)}", "danger")
+
+    return redirect(url_for('ver_gestion_cargos'))
+
+@app.route("/admin/gestion_cargos")
+@login_requerido
+@requerir_permiso('es_encargado_admin')
+def ver_gestion_cargos():
+    conn = get_db()
+    cargos_activos = []
+    bomberos = []
+    
+    if conn:
+        try:
+            cur = conn.cursor(dictionary=True)
+            
+            # 1. Traer cargos actuales (donde fecha_fin es NULL)
+            # Unimos con la tabla legajos para tener nombre y apellido reales
+            query_activos = """
+                SELECT h.id, h.legajo, h.area, h.fecha_inicio, l.nombre, l.apellido 
+                FROM historial_cargos h
+                JOIN legajos l ON h.legajo = l.legajo
+                WHERE h.fecha_fin IS NULL
+                ORDER BY l.apellido ASC
+            """
+            cur.execute(query_activos)
+            cargos_activos = cur.fetchall()
+            
+            # 2. Traer lista de bomberos activos para el selector del formulario
+            cur.execute("SELECT legajo, nombre, apellido FROM legajos WHERE situacion = 'ACTIVO' ORDER BY apellido ASC")
+            bomberos = cur.fetchall()
+            
+        except Error as e:
+            flash(f"Error al cargar datos: {str(e)}", "danger")
+        finally:
+            conn.close()
+            
+    return render_template("gestion_cargos.html", cargos_activos=cargos_activos, bomberos=bomberos)
+
+# ============================================================
 # MOVILES
 # ============================================================
 
-@app.route('/moviles')
-@login_requerido # Asegura el acceso solo a personal de Bomberos
+@app.route("/moviles")
+@login_requerido
+@requerir_permiso('es_encargado_moviles')
 def gestion_moviles():
+    if not tiene_permiso('moviles'):
+        flash("Acceso restringido a encargados de móviles.", "warning")
+        return redirect(url_for('inicio'))
+    
     # Obtenemos la flota completa desde el controlador
     # Lo ideal es que obtener_estado_unidades() traiga ahora todos los campos técnicos
     todos_los_moviles = obtener_estado_unidades() 
@@ -2272,6 +2565,7 @@ def gestion_moviles():
 
 @app.route('/moviles/crear', methods=['POST'])
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def crear_movil():
     if request.method == 'POST':
         # Recolección de todos los datos del formulario técnico
@@ -2327,6 +2621,7 @@ def crear_movil():
 
 @app.route('/moviles/editar/<int:id>', methods=['GET', 'POST'])
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def editar_movil(id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -2366,6 +2661,7 @@ def editar_movil(id):
 
 @app.route('/moviles/mantenimiento/registrar/<int:id_movil>', methods=['POST'])
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def registrar_mantenimiento(id_movil):
     if request.method == 'POST':
         fecha = request.form.get('fecha')
@@ -2394,6 +2690,7 @@ from flask import Response
 
 @app.route('/moviles/reporte-seguro')
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def reporte_seguro():
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -2412,6 +2709,7 @@ def reporte_seguro():
 
 @app.route('/moviles/reporte-excel')
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def reporte_excel():
     db = get_db()
     query = "SELECT nro_unidad, dominio, marca, modelo, nro_chasis, nro_motor, km_inicial, aseguradora, estado FROM moviles"
@@ -2436,17 +2734,9 @@ def reporte_excel():
     output.seek(0)
     return send_file(output, download_name="SIAB_Moviles_Almafuerte.xlsx", as_attachment=True)
 
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, HRFlowable
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.lib.styles import getSampleStyleSheet
-from io import BytesIO
-from datetime import datetime
-import os
-
 @app.route('/moviles/reporte-pdf')
 @login_requerido
+@requerir_permiso('es_encargado_moviles')
 def reporte_pdf():
     try:
         db = get_db()

@@ -1,68 +1,100 @@
-{% extends "base.html" %} <!-- Esto le dice que use la barra lateral que ya ves -->
+{% extends "base.html" %}
 
-{% block contenido %} <!-- Todo lo que pongas aquí adentro aparecerá en el centro -->
+{% block contenido %}
+<div class="container-fluid mt-3">
+    <!-- Encabezado con logo o icono pequeño para ahorrar espacio móvil -->
+    <div class="d-flex align-items-center mb-4">
+        <i class="fas fa-th-large fs-3 text-secondary me-2"></i>
+        <h2 class="text-secondary mb-0 fw-bold">Panel SIAB</h2>
+    </div>
 
-<div class="container-fluid mt-4">
-    <h2 class="text-secondary mb-4"><i class="fas fa-th-large"></i> Panel de Control - Bomberos Almafuerte</h2>
-    
-    <!-- Fila 1: Operativa -->
-    <div class="row g-4">
+    <!-- SECCIÓN OPERATIVA -->
+    <div class="row g-3">
         <!-- Siniestros -->
-        <div class="col-md-4">
-            <a href="{{ url_for('listado_siniestros') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none p-4">
-                <i class="fas fa-fire-extinguisher fa-3x mb-3"></i>
-                <h4>Siniestros</h4>
-                <p class="small mb-0">Gestión de salidas y partes de emergencia.</p>
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('listado_siniestros') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none border-0 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-fire-extinguisher fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Siniestros</h5>
+                    <p class="small mb-0 opacity-75">Salidas y partes de emergencia.</p>
+                </div>
             </a>
         </div>
-        
+
         <!-- Móviles -->
-        <div class="col-md-4">
-            <a href="{{ url_for('gestion_moviles') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none p-4" style="filter: brightness(90%);">
-                <i class="fas fa-truck-moving fa-3x mb-3"></i>
-                <h4>Móviles</h4>
-                <p class="small mb-0">Estado de la Unidad 43/5 y flota.</p>
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('gestion_moviles') }}" class="card h-100 shadow-sm bg-danger text-white text-decoration-none border-0 opacity-90 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-truck-moving fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Móviles</h5>
+                    <p class="small mb-0 opacity-75">Estado de la flota y Unidad 43/5.</p>
+                </div>
             </a>
         </div>
 
         <!-- Actividades -->
-        <div class="col-md-4">
-            <a href="{{ url_for('asistencia') }}" class="card h-100 shadow-sm bg-warning text-dark text-decoration-none p-4">
-                <i class="fas fa-tasks fa-3x mb-3"></i>
-                <h4>Actividades</h4>
-                <p class="small mb-0">Capacitaciones Obligatorias y Prácticas.</p>
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('ver_actividades') }}" class="card h-100 shadow-sm bg-warning text-dark text-decoration-none border-0 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-tasks fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Actividades</h5>
+                    <p class="small mb-0 text-dark opacity-75">Estadísticas y evolución de tareas del cuartel.</p>
+                </div>
             </a>
+        </div>
     </div>
 
-    <!-- Fila 2: Administración y HCD -->
-    <div class="row g-4 mt-2">
-        <!-- Personal -->
-        <div class="col-md-4">
-            <a href="/legajos" class="card h-100 shadow-sm bg-primary text-white text-decoration-none p-4">
-                <i class="fas fa-users fa-3x mb-3"></i>
-                <h4>Personal</h4>
-                <p class="small mb-0">Legajos, Puntos y Departamentos.</p>
+    <!-- SECCIÓN ADMINISTRATIVA -->
+    <h5 class="text-secondary fw-bold mt-5 mb-3 border-bottom pb-2">Gestión Institucional</h5>
+    <div class="row g-3">
+        <!-- Mi Academia - Corregido para usar session.legajo -->
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('ver_academia_bombero', legajo=session.get('legajo')) }}" class="card h-100 shadow-sm bg-primary text-white text-decoration-none border-0 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-graduation-cap fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Mi Academia</h5>
+                    <p class="small mb-0 opacity-75">Mis notas y evolución técnica.</p>
+                </div>
             </a>
         </div>
 
-        <!-- H.C.D. -->
-        <div class="col-md-4">
-            <a href="/hcd" class="card h-100 shadow-sm bg-dark text-white text-decoration-none p-4">
-                <i class="fas fa-balance-scale fa-3x mb-3"></i>
-                <h4>H.C.D.</h4>
-                <p class="small mb-0">Comisión Directiva y Socios.</p>
+        <!-- Configuración (Usuarios, Permisos, Claves) -->
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('ver_gestion_cargos') }}" class="card h-100 shadow-sm bg-dark text-white text-decoration-none border-0 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-user-shield fa-2x mb-2 text-warning"></i>
+                    <h5 class="fw-bold">Configuración</h5>
+                    <p class="small mb-0 opacity-75">Usuarios, claves y permisos.</p>
+                </div>
             </a>
         </div>
 
-        <!-- Sistema -->
-        <div class="col-md-4">
-            <a href="/configuracion" class="card h-100 shadow-sm bg-secondary text-white text-decoration-none p-4">
-                <i class="fas fa-database fa-3x mb-3"></i>
-                <h4>Sistema</h4>
-                <p class="small mb-0">Configuración y Backups.</p>
+        <!-- Departamentos -->
+        <div class="col-12 col-sm-6 col-lg-4">
+            <a href="{{ url_for('departamentos') }}" class="card h-100 shadow-sm bg-secondary text-white text-decoration-none border-0 hover-lift">
+                <div class="card-body p-4 text-center text-sm-start">
+                    <i class="fas fa-sitemap fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Departamentos</h5>
+                    <p class="small mb-0 opacity-75">Áreas y especialidades.</p>
+                </div>
             </a>
         </div>
     </div>
 </div>
 
+<style>
+    /* Efecto sutil al pasar el mouse en PC */
+    .hover-lift {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .hover-lift:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
+    }
+    /* En móviles, centramos el texto de los botones para que se vean como apps */
+    @media (max-width: 576px) {
+        .card-body { text-align: center !important; }
+        .card-body i { margin-bottom: 10px; }
+    }
+</style>
 {% endblock %}

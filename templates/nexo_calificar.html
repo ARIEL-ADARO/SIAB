@@ -1,56 +1,92 @@
 {% extends "base.html" %}
 {% block contenido %}
 <div class="container mt-4">
-    <div class="card shadow">
-        <div class="card-header bg-danger text-white">
-            <h5 class="mb-0">Calificación de Desempeño: Parte #{{ siniestro.nro_part_ruba }}</h5>
+    <div class="card shadow-sm border-0">
+        <!-- Encabezado con degradado para mayor impacto visual -->
+        <div class="card-header bg-danger bg-gradient text-white p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-clipboard-check me-2"></i>Calificación de Desempeño: Parte #{{ siniestro.nro_part_ruba }}
+                </h5>
+                <span class="badge bg-white text-danger fw-bold">SIAB - Bomberos Almafuerte</span>
+            </div>
         </div>
-        <div class="card-body">
-            <p><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }} en {{ siniestro.lugar }}</p>
-            
-            <div class="alert alert-info d-flex justify-content-between align-items-center">
-                <span>¿Asignar puntaje estándar a todos los presentes?</span>
-                <button type="button" class="btn btn-sm btn-primary" onclick="setEstandar(2.5)">Asignar 2.5 pts</button>
+
+        <div class="card-body p-4">
+            <!-- Info del Siniestro -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <p class="mb-1 text-muted small uppercase">Siniestro</p>
+                    <h5 class="fw-bold">{{ siniestro.tipo_siniestro }}</h5>
+                    <p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>{{ siniestro.lugar }}</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <p class="mb-1 text-muted small uppercase">Fecha del Servicio</p>
+                    <h5 class="fw-bold text-primary">{{ siniestro.fecha.strftime('%d/%m/%Y') }}</h5>
+                </div>
             </div>
 
-            <form method="POST">
-                <table class="table align-middle">
-                    <thead>
-                        <tr>
-                            <th>Bombero</th>
-                            <th>Móvil / Rol</th>
-                            <th style="width: 150px;">Puntaje</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in personal %}
-                        <tr>
-                            <td>
-                                <strong>{{ p.apellido }}, {{ p.nombre }}</strong>
-                                <input type="hidden" name="legajos" value="{{ p.legajo }}">
-                            </td>
-                            <td>
-                                <span class="badge bg-secondary">{{ p.movil }}</span> 
-                                <small>{{ p.rol }}</small>
-                            </td>
-                            <td>
-                                <input type="number" step="0.1" name="puntos_{{ p.legajo }}" 
-                                       id="input_{{ p.legajo }}" class="form-control puntaje-field" 
-                                       value="0.0">
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                
-                <div class="mt-4">
-                    <label>Observaciones del desempeño general:</label>
-                    <textarea name="observaciones" class="form-control" rows="2"></textarea>
+            <!-- Panel de Carga Masiva Dinámico -->
+            <div class="alert alert-light border d-flex justify-content-between align-items-center shadow-sm">
+                <div>
+                    <i class="bi bi-lightning-charge text-warning me-2"></i>
+                    <strong>Carga Rápida:</strong> Se sugiere el valor configurado para el año {{ siniestro.fecha.year }}.
+                </div>
+                <button type="button" class="btn btn-primary shadow-sm" onclick="setEstandar({{ puntos_sugeridos }})">
+                    Asignar {{ puntos_sugeridos }} pts a todos
+                </button>
+            </div>
+
+            <form method="POST" class="mt-4">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Personal (Apellido y Nombre)</th>
+                                <th>Móvil / Función</th>
+                                <th style="width: 180px;" class="text-center">Puntaje Operativo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in personal %}
+                            <tr>
+                                <td>
+                                    <div class="fw-bold text-dark">{{ p.apellido }}, {{ p.nombre }}</div>
+                                    <small class="text-muted">Legajo: #{{ p.legajo }}</small>
+                                    <input type="hidden" name="legajos" value="{{ p.legajo }}">
+                                </td>
+                                <td>
+                                    <span class="badge rounded-pill bg-secondary px-3">{{ p.movil }}</span>
+                                    <div class="small text-muted mt-1">{{ p.rol }}</div>
+                                </td>
+                                <td>
+                                    <div class="input-group">
+                                        <input type="number" step="0.25" name="puntos_{{ p.legajo }}" 
+                                               id="input_{{ p.legajo }}" 
+                                               class="form-control form-control-lg text-center fw-bold puntaje-field" 
+                                               value="{{ puntos_sugeridos }}">
+                                        <span class="input-group-text">pts</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
 
-                <div class="mt-4 text-end">
-                    <a href="{{ url_for('listado_siniestros') }}" class="btn btn-light">Cancelar</a>
-                    <button type="submit" class="btn btn-success">Finalizar y Cargar Puntos</button>
+                <!-- Observaciones -->
+                <div class="mt-4">
+                    <label class="form-label fw-bold"><i class="bi bi-chat-left-text me-2"></i>Observaciones Generales del Servicio:</label>
+                    <textarea name="observaciones" class="form-control border-primary-subtle" rows="3" 
+                              placeholder="Indique detalles relevantes sobre la asistencia o comportamiento del personal..."></textarea>
+                </div>
+
+                <!-- Acciones Finales -->
+                <div class="mt-5 pt-3 border-top d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('listado_siniestros') }}" class="btn btn-link text-decoration-none text-muted">Cancelar operación</a>
+                    <button type="submit" class="btn btn-success btn-lg px-5 shadow">
+                        <i class="bi bi-check-circle me-2"></i>Finalizar y Guardar Puntos
+                    </button>
                 </div>
             </form>
         </div>
@@ -58,9 +94,17 @@
 </div>
 
 <script>
+/**
+ * Asigna el valor configurado a todos los campos de puntaje.
+ * @param {number} valor - El puntaje obtenido desde la configuración anual.
+ */
 function setEstandar(valor) {
-    document.querySelectorAll('.puntaje-field').forEach(input => {
+    const campos = document.querySelectorAll('.puntaje-field');
+    campos.forEach(input => {
         input.value = valor;
+        // Efecto visual de resaltado temporal al cambiar
+        input.classList.add('is-valid');
+        setTimeout(() => input.classList.remove('is-valid'), 1000);
     });
 }
 </script>
