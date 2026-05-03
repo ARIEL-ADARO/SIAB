@@ -94,9 +94,6 @@
             </div>
 
             <div class="mt-4 border-top pt-3 d-flex justify-content-between">
-                <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalMantenimiento">
-                    <i class="fas fa-tools"></i> Ver/Cargar Mantenimiento
-                </button>
                 <div>
                     <a href="/moviles" class="btn btn-secondary me-2">Cancelar</a>
                     <button type="submit" class="btn btn-danger px-5">Actualizar Ficha Completa</button>
@@ -105,98 +102,4 @@
         </form>
     </div>
 
-    <!-- TABLA DE HISTORIAL DE MANTENIMIENTO -->
-    <div class="card mt-4 shadow-sm">
-        <div class="card-header bg-secondary text-white">
-            <i class="fas fa-history"></i> Historial de Reparaciones y Mantenimiento
-        </div>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Descripción</th>
-                        <th>Proveedor</th>
-                        <th>KM</th>
-                        <th>Importe</th>
-                        <th>Próx. Vencimiento</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for h in historial %}
-                    <tr>
-                        <td>{{ h.fecha_reparacion }}</td>
-                        <td>{{ h.descripcion }}</td>
-                        <td>{{ h.proveedor }}</td>
-                        <td>{{ h.km_unidad }}</td>
-                        <td>${{ h.importe_total }}</td>
-                        <td class="text-danger"><strong>{{ h.fecha_proximo_mantenimiento }}</strong></td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted">No hay registros de mantenimiento para este móvil.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Modal para Nueva Reparación -->
-<div class="modal fade" id="modalMantenimiento" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Cargar Reparación / Mantenimiento</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form action="/moviles/mantenimiento/registrar/{{ movil.id }}" method="POST">
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Fecha</label>
-                            <input type="date" name="fecha" class="form-control" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Tipo</label>
-                            <select name="tipo" class="form-select">
-                                <option value="Preventivo">Preventivo (Service/Filtros)</option>
-                                <option value="Correctivo">Correctivo (Reparación)</option>
-                                <option value="Mejora">Mejora/Equipamiento</option>
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Descripción de la Tarea</label>
-                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Cambio de batería 12v 75ah">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Proveedor / Taller</label>
-                            <input type="text" name="proveedor" class="form-control" placeholder="Ej: Taller Mecánico X o En Cuartel">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Kilometraje</label>
-                            <input type="number" name="km" class="form-control">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Importe Total</label>
-                            <input type="number" step="0.01" name="importe" class="form-control">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Recordatorio Próximo Vencimiento</label>
-                            <input type="date" name="proximo_vence" class="form-control">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Observaciones</label>
-                            <textarea name="observaciones" class="form-control" rows="2"></textarea>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="submit" class="btn btn-danger">Guardar Mantenimiento</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 {% endblock %}

@@ -2545,79 +2545,70 @@ def ver_gestion_cargos():
 @login_requerido
 @requerir_permiso('es_encargado_moviles')
 def gestion_moviles():
-    if not tiene_permiso('moviles'):
-        flash("Acceso restringido a encargados de móviles.", "warning")
-        return redirect(url_for('inicio'))
+    # Eliminamos el check de 'moviles' si ya usas 'es_encargado_moviles' en el decorador
     
-    # Obtenemos la flota completa desde el controlador
-    # Lo ideal es que obtener_estado_unidades() traiga ahora todos los campos técnicos
-    todos_los_moviles = obtener_estado_unidades() 
+    db = get_db()
+    # Usamos dictionary=True para que en el HTML podamos usar m['nombre']
+    cursor = db.cursor(dictionary=True)
     
-    # Separamos en dos listas para la interfaz:
-    # 1. Los que están operativos (para las tarjetas superiores)
-    # 2. Los que son parte de la historia del cuartel (para la grilla inferior)
+    # Traemos todos los móviles de la tabla
+    cursor.execute("SELECT * FROM moviles")
+    todos_los_moviles = cursor.fetchall()
+    db.close()
+    
+    # Separamos las listas según el estado
     activos = [m for m in todos_los_moviles if m['estado'] in ['ACTIVO', 'REPARACION']]
     historicos = [m for m in todos_los_moviles if m['estado'] in ['HISTORICO', 'BAJA']]
     
-    return render_template('moviles.html', 
+    return render_template('gestion_moviles.html', 
                            moviles=activos, 
                            moviles_historicos=historicos)
 
-@app.route('/moviles/crear', methods=['POST'])
+@app.route("/moviles/crear", methods=["POST"])
 @login_requerido
-@requerir_permiso('es_encargado_moviles')
+@rol_requerido('ADMIN', 'JEFATURA')
 def crear_movil():
-    if request.method == 'POST':
-        # Recolección de todos los datos del formulario técnico
-        nro = request.form.get('nro_unidad')
-        dominio = request.form.get('dominio')
-        homenaje = request.form.get('nombre_homenaje')
-        marca = request.form.get('marca')
-        modelo = request.form.get('modelo')
-        anio = request.form.get('anio')
-        tipo = request.form.get('tipo')
-        origen = request.form.get('lugar_origen')
-        proveedor = request.form.get('proveedor')
-        
-        # Datos operativos (con valores por defecto si vienen vacíos)
-        agua = request.form.get('capacidad_agua') or 0
-        espuma = request.form.get('tiene_espuma')
-        personas = request.form.get('capacidad_personas') or 0
-        
-        # Fechas y Trailer
-        vtv = request.form.get('fecha_vtv')
-        compra = request.form.get('fecha_compra')
-        t_dominio = request.form.get('trailer_dominio')
-        t_ejes = request.form.get('trailer_ejes') or 0
-        km_ini = request.form.get('km_inicial') or 0
-
-        db = get_db()
-        cursor = db.cursor()
-        
-        query = """INSERT INTO moviles 
-                   (nro_unidad, dominio, nombre_homenaje, marca, modelo, anio, tipo, 
-                    lugar_origen, proveedor, capacidad_agua, tiene_espuma, 
-                    capacidad_personas, fecha_vtv, fecha_compra, trailer_dominio, 
-                    trailer_ejes, estado, fecha_alta, km_inicial)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVO', NOW())"""
-        
-        valores = (
-            nro, dominio, homenaje, marca, modelo, anio if anio else None, tipo,
-            origen, proveedor, agua, espuma, personas,
-            vtv if vtv else None, compra if compra else None,
-            t_dominio, t_ejes
+    if request.method == "POST":
+        # Captura de datos del formulario
+        datos = (
+            request.form.get("nro_unidad"),
+            request.form.get("dominio"),
+            request.form.get("anio"),
+            request.form.get("nombre_homenaje"),
+            request.form.get("marca"),
+            request.form.get("modelo"),
+            request.form.get("tipo"),
+            request.form.get("lugar_origen"),
+            request.form.get("proveedor"),
+            request.form.get("capacidad_agua"),
+            request.form.get("tiene_espuma"),
+            request.form.get("capacidad_personas"),
+            request.form.get("fecha_vtv") or None, # Manejo de fechas vacías
+            request.form.get("fecha_compra") or None,
+            request.form.get("trailer_dominio"),
+            request.form.get("trailer_ejes")
         )
 
-        try:
-            cursor.execute(query, valores)
-            db.commit()
-        except Exception as e:
-            print(f"Error al insertar móvil: {e}")
-            db.rollback()
-        finally:
-            db.close()
+        conn = get_db()
+        cur = conn.cursor()
         
-        return redirect(url_for('gestion_moviles'))
+        sql = """INSERT INTO unidades_fisicas 
+                 (nro_unidad, dominio, anio, nombre_homenaje, marca, modelo, tipo, 
+                  lugar_origen, proveedor, capacidad_agua, tiene_espuma, 
+                  capacidad_personas, fecha_vtv, fecha_compra, trailer_dominio, trailer_ejes) 
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        
+        try:
+            cur.execute(sql, datos)
+            conn.commit()
+            flash("Nueva unidad registrada exitosamente en el historial.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"Error al registrar: {str(e)}", "danger")
+        finally:
+            conn.close()
+
+        return redirect(url_for('gestion_moviles')) # O como se llame tu ruta de listado
 
 @app.route('/moviles/editar/<int:id>', methods=['GET', 'POST'])
 @login_requerido
@@ -2675,15 +2666,172 @@ def registrar_mantenimiento(id_movil):
 
         db = get_db()
         cursor = db.cursor()
+        # 1. Insertamos el historial
         query = """INSERT INTO historial_mantenimiento 
-                   (id_movil, fecha_reparacion, tipo_mantenimiento, descripcion, 
+                (id_movil, fecha_reparacion, tipo_mantenimiento, descripcion, 
                     proveedor, km_unidad, importe_total, fecha_proximo_mantenimiento, observaciones) 
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-        
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
         cursor.execute(query, (id_movil, fecha, tipo, desc, prov, km, importe, proximo, obs))
+        
+        # 2. AGREGADO: Actualizamos el KM en la tabla principal del móvil
+        cursor.execute("UPDATE moviles SET km_inicial = %s WHERE id = %s", (km, id_movil))
         db.commit()
         db.close()
-        return redirect(url_for('editar_movil', id=id_movil))
+        return redirect(url_for('ficha_integral_movil', id=id_movil))
+
+@app.route('/mantenimiento/actualizar/<int:id_reg>', methods=['POST'])
+@login_requerido  # Usando tu decorador correcto
+def actualizar_mantenimiento(id_reg):
+    # Capturamos TODOS los campos del formulario
+    fecha = request.form.get('fecha')
+    km = request.form.get('km')
+    tipo = request.form.get('tipo')
+    desc = request.form.get('descripcion')
+    prov = request.form.get('proveedor')
+    importe = request.form.get('importe')
+    obs = request.form.get('observaciones')
+
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # Buscamos el id_movil para saber a qué ficha volver
+    cursor.execute("SELECT id_movil FROM historial_mantenimiento WHERE id = %s", (id_reg,))
+    m = cursor.fetchone()
+    id_movil = m['id_movil']
+
+    # Actualizamos el registro completo en la tabla
+    sql = """
+        UPDATE historial_mantenimiento 
+        SET fecha_reparacion=%s, km_unidad=%s, tipo_mantenimiento=%s, 
+            descripcion=%s, proveedor=%s, importe_total=%s, observaciones=%s
+        WHERE id=%s
+    """
+    cursor.execute(sql, (fecha, km, tipo, desc, prov, importe, obs, id_reg))
+    
+    # Opcional: También podrías actualizar el KM en la tabla moviles si es el registro más nuevo
+    
+    db.commit()
+    db.close()
+
+    return redirect(url_for('ficha_integral_movil', id=id_movil))
+    
+# --- ELIMINAR MANTENIMIENTO ---
+@app.route('/moviles/mantenimiento/eliminar/<int:id_reg>')
+@login_requerido
+@requerir_permiso('es_encargado_moviles')
+def eliminar_mantenimiento(id_reg):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # Primero obtenemos el id_movil para saber a dónde volver
+    cursor.execute("SELECT id_movil FROM historial_mantenimiento WHERE id = %s", (id_reg,))
+    registro = cursor.fetchone()
+    
+    if registro:
+        id_movil = registro['id_movil']
+        cursor.execute("DELETE FROM historial_mantenimiento WHERE id = %s", (id_reg,))
+        db.commit()
+        flash("Registro de mantenimiento eliminado.", "warning")
+    
+    db.close()
+    return redirect(url_for('ficha_integral_movil', id=id_movil))
+
+# --- EDITAR MANTENIMIENTO (VISTA) ---
+@app.route('/moviles/mantenimiento/editar/<int:id_reg>')
+@login_requerido
+def editar_mantenimiento(id_reg):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM historial_mantenimiento WHERE id = %s", (id_reg,))
+    mantenimiento = cursor.fetchone()
+    db.close()
+    
+    return render_template('editar_mantenimiento.html', m=mantenimiento)    
+
+@app.route("/moviles/historial/<int:id>")
+@login_requerido
+@requerir_permiso('es_encargado_moviles')
+def historial_movil(id):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # Obtenemos los datos del móvil para el encabezado
+    cursor.execute("SELECT nro_unidad, marca, modelo FROM moviles WHERE id = %s", (id,))
+    movil = cursor.fetchone()
+    
+    # Obtenemos todo el historial de reparaciones y servicios
+    cursor.execute("""
+        SELECT * FROM historial_mantenimiento 
+        WHERE id_movil = %s 
+        ORDER BY fecha_reparacion DESC
+    """, (id,))
+    historial = cursor.fetchall()
+    
+    db.close()
+    return render_template('historial_movil.html', movil=movil, historial=historial)
+
+@app.route("/moviles/ficha/<int:id>")
+@login_requerido
+@requerir_permiso('es_encargado_moviles')
+def ficha_integral_movil(id):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # 1. DATOS PATRIMONIALES
+    cursor.execute("SELECT * FROM moviles WHERE id = %s", (id,))
+    movil = cursor.fetchone()
+    
+    if not movil:
+        db.close()
+        return "Móvil no encontrado", 404
+
+    # Obtenemos el número de unidad (ej: 43/5) para buscarlo en nexo_personal
+    nro_unidad_texto = movil['nro_unidad']
+
+    # 2. FICHA TÉCNICA (Mantenimiento)
+    cursor.execute("""
+        SELECT * FROM historial_mantenimiento 
+        WHERE id_movil = %s 
+        ORDER BY fecha_reparacion DESC
+    """, (id,))
+    mantenimiento = cursor.fetchall()
+    
+    # 3. REGISTRO OPERATIVO (Siniestros/Salidas)
+    # Usamos nexo_siniestros y nexo_personal que son tus tablas reales
+    cursor.execute("""
+        SELECT DISTINCT s.nro_part_ruba, s.fecha, s.tipo_siniestro, s.lugar
+        FROM nexo_personal np
+        JOIN nexo_siniestros s ON np.siniestro_id = s.id
+        WHERE np.movil = %s
+        ORDER BY s.fecha DESC
+    """, (nro_unidad_texto,))
+    salidas = cursor.fetchall()
+    
+    db.close()
+    return render_template('ficha_integral_movil.html', 
+                           movil=movil, 
+                           mantenimiento=mantenimiento, 
+                           salidas=salidas)
+
+@app.route("/moviles/mantenimiento/nuevo/<int:id>")
+@login_requerido
+def nuevo_mantenimiento_especifico(id):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # Buscamos el móvil para pasar sus datos al formulario
+    cursor.execute("SELECT id, nro_unidad, marca, modelo FROM moviles WHERE id = %s", (id,))
+    movil = cursor.fetchone()
+    
+    db.close()
+    
+    if not movil:
+        flash("Móvil no encontrado", "danger")
+        return redirect(url_for('gestion_moviles'))
+        
+    # Aquí lo mandamos al mismo template que ya usas para registrar mantenimientos
+    # Pero le pasamos el objeto 'movil_preseleccionado'
+    return render_template('registrar_mantenimiento.html', movil_preseleccionado=movil)
 
 import csv
 from flask import Response
