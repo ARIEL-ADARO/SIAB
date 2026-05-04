@@ -42,27 +42,28 @@
                                 <span class="badge bg-info">{{ s.estado }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-center">
-                            <div class="btn-group shadow-sm">
-                                <!-- BOTÓN VER: Gestión interna (HTML) -->
-                                <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> GESTIONAR
-                                </a>
+                    <td class="text-center">
+                        <div class="btn-group shadow-sm">
+                            <!-- BOTÓN VER -->
+                            <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> VER
+                            </a>
 
-                                <!-- BOTÓN IMPRIMIR (ROJO) -->
-                                <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-danger" target="_blank">
-                                    <i class="bi bi-printer-fill"></i> IMPRIMIR
-                                </a>                                                       
-                                {# Verificamos si el rol está autorizado para calificar #}
-                                {% if session.get('rol') in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
-                                    {% if s.estado == 'BORRADOR' %}
-                                        <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
-                                            <i class="bi bi-star-fill"></i> Calificar
-                                        </a>
-                                    {% endif %}
+                            <!-- BOTÓN IMPRIMIR -->
+                            <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-danger" target="_blank">
+                                <i class="bi bi-printer-fill"></i> IMPRIMIR
+                            </a>                                            
+
+                            {# Verificamos si es ADMIN (convertimos a mayúsculas para comparar) #}
+                            {% if session.get('rol')|upper in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
+                                {% if s.estado == 'BORRADOR' %}
+                                    <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
+                                        <i class="bi bi-star-fill"></i> Calificar
+                                    </a>
                                 {% endif %}
-                            </div>
-                        </td>
+                            {% endif %}
+                        </div>
+                    </td>
                     </tr>
                     {% else %}
                     <tr>

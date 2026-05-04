@@ -3,44 +3,84 @@
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4><i class="bi bi-file-earmark-text"></i> Gestión de Siniestro #{{ siniestro.nro_part_ruba }}</h4>
-        <a href="{{ url_for('imprimir_nexo', id=siniestro.id) }}" target="_blank" class="btn btn-danger">
-            <i class="bi bi-printer"></i> IMPRIMIR PLANILLA DE FIRMAS
-        </a>
+        <div class="btn-group">
+            <a href="{{ url_for('imprimir_nexo', id=siniestro.id) }}" target="_blank" class="btn btn-danger">
+                <i class="bi bi-printer"></i> IMPRIMIR PLANILLA
+            </a>
+            
+            {# --- LÓGICA DE RECALIFICACIÓN --- #}
+            {% if session.get('rol')|upper == 'ADMIN' %}
+                {# Como siniestro.fecha es un objeto date, accedemos directo a .month y .year #}
+                {% set mes_salida = siniestro.fecha.month %}
+                {% set anio_salida = siniestro.fecha.year %}
+                
+                {% if mes_salida == hoy.month and anio_salida == hoy.year %}
+                    <a href="{{ url_for('calificar_salida', id=siniestro.id) }}" class="btn btn-warning">
+                        <i class="bi bi-pencil-square"></i> RECALIFICAR
+                    </a>
+                {% else %}
+                    <button class="btn btn-outline-secondary" disabled title="Mes cerrado">
+                        <i class="bi bi-lock-fill"></i> MES CERRADO
+                    </button>
+                {% endif %}
+            {% endif %}
+        </div>
     </div>
+
     <div class="mb-3">
         <a href="{{ url_for('listado_siniestros') }}" class="btn btn-secondary">
             <i class="bi bi-arrow-left-circle"></i> Volver al Listado
         </a>
     </div>
+
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <div class="row">
-                <div class="col-md-4"><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }}</div>
-                <div class="col-md-4"><strong>Fecha:</strong> {{ siniestro.fecha }}</div>
-                <div class="col-md-4"><strong>Lugar:</strong> {{ siniestro.lugar }}</div>
+                <div class="col-md-3"><strong>Siniestro:</strong> {{ siniestro.tipo_siniestro }}</div>
+                <div class="col-md-3"><strong>Fecha:</strong> {{ siniestro.fecha }}</div>
+                <div class="col-md-3"><strong>Lugar:</strong> {{ siniestro.lugar }}</div>
+                <div class="col-md-3"><strong>Estado:</strong> 
+                    <span class="badge {{ 'bg-warning text-dark' if siniestro.estado == 'BORRADOR' else 'bg-success' }}">
+                        {{ siniestro.estado }}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">Personal Desplazado</div>
+        <div class="card-header bg-primary text-white">Personal Desplazado y en Cuartel</div>
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
                         <th>Legajo</th>
                         <th>Nombre y Apellido</th>
+                        <th>Asistencia</th>
                         <th>Móvil</th>
                         <th>Rol en Salida</th>
+                        <th class="text-center">Calificación</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for p in personal %}
-                    <tr>
+                    <tr class="{{ 'table-info' if p.estado_asistencia == 'EN_CUARTEL' }}">
                         <td>{{ p.legajo }}</td>
                         <td>{{ p.apellido }}, {{ p.nombre }}</td>
-                        <td>{{ p.movil }}</td>
-                        <td>{{ p.rol }}</td>
+                        <td>
+                            {% if p.estado_asistencia == 'PRESENTE' %}
+                                <span class="badge bg-success">SALIÓ</span>
+                            {% elif p.estado_asistencia == 'EN_CUARTEL' %}
+                                <span class="badge bg-primary">EN CUARTEL</span>
+                            {% else %}
+                                <span class="badge bg-secondary">---</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ p.movil if p.movil else '-' }}</td>
+                        <td>{{ p.rol if p.rol else '-' }}</td>
+                        <td class="text-center fw-bold text-primary">
+                            {{ p.puntaje if p.puntaje else '-' }}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

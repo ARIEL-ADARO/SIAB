@@ -590,25 +590,39 @@ def detalle_asistencia(evento_id):
     return render_template("detalle_asistencia.html", evento=evento, registros=registros)
 
 # RUTA PARA GESTIONAR (Pantalla HTML normal)
+from datetime import datetime # Asegurate de tener esta importación arriba
+
+from datetime import datetime
+
 @app.route('/registro-salidas/detalle/<int:id>')
 @login_requerido
 def detalle_siniestro(id):
     db = get_db()
     cur = db.cursor(dictionary=True)
+    
+    # 1. Traemos los datos del siniestro (para el encabezado y validación de fecha)
     cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
     siniestro = cur.fetchone()
     
+    # 2. Traemos al personal. 
+    # IMPORTANTE: Asegúrate de que 'puntaje' sea el nombre real de tu columna en nexo_personal
     cur.execute("""
-        SELECT p.*, l.nombre, l.apellido, l.grado as jerarquia 
+        SELECT p.legajo, p.movil, p.rol, p.puntaje, p.estado_asistencia,
+               l.nombre, l.apellido, l.grado as jerarquia 
         FROM nexo_personal p
         JOIN legajos l ON p.legajo = l.legajo
         WHERE p.siniestro_id = %s
     """, (id,))
     personal = cur.fetchall()
-    cur.close()
     
-    # IMPORTANTE: Esta renderiza la pantalla de GESTIÓN
-    return render_template('nexo_detalle.html', siniestro=siniestro, personal=personal)
+    cur.close()
+    db.close() # Cerramos la conexión para liberar recursos
+    
+    # 3. Enviamos 'hoy' para que el HTML pueda aplicar el bloqueo de mes cerrado
+    return render_template('nexo_detalle.html', 
+                           siniestro=siniestro, 
+                           personal=personal, 
+                           hoy=datetime.now())
 
 # RUTA PARA IMPRIMIR (El PDF Virtual con renglones)
 @app.route('/registro-salidas/imprimir/<int:id>')
@@ -1988,71 +2002,78 @@ def nueva_planilla_nexo():
     if request.method == 'POST':
         try:
             nro_parte = request.form.get('nro_parte')
-            # Ahora recibimos el ID del mapeo
             tipo_mapeo_id = request.form.get('tipo_siniestro_id') 
             lugar = request.form.get('lugar')
             fecha = request.form.get('fecha') 
             hora = request.form.get('hora_salida')
+            observaciones = request.form.get('observaciones') # Para instituciones
+            comentario = request.form.get('comentario_general')
 
-            # BUSCAMOS LOS DATOS DEL RUBA ANTES DE GUARDAR
+            # BUSCAMOS LOS DATOS DEL RUBA
             cur.execute("SELECT * FROM tipos_siniestros WHERE id = %s", (tipo_mapeo_id,))
             mapeo = cur.fetchone()
 
             if not mapeo:
                 raise Exception("Tipo de siniestro no válido")
 
-            # INSERTAMOS EN LA TABLA DE SALIDAS (Agregando los campos RUBA)
-            # Asegúrate de haber agregado las columnas grupo_ruba y subtipo_ruba a tu tabla
+            # INSERTAMOS EL SINIESTRO (Queda como BORRADOR)
             sql_siniestro = """
                 INSERT INTO nexo_siniestros 
-                (nro_part_ruba, fecha, hora_salida, tipo_siniestro, grupo_ruba, subtipo_ruba, lugar, estado)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'BORRADOR')
+                (nro_part_ruba, fecha, hora_salida, tipo_siniestro, grupo_ruba, subtipo_ruba, lugar, observaciones, comentario_general, estado)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'BORRADOR')
             """
             cur.execute(sql_siniestro, (
-                nro_parte, 
-                fecha, 
-                hora, 
-                mapeo['nombre_siab'],   # Detalle SIAB
-                mapeo['grupo_ruba'],    # Grupo RUBA (Ej: Incendios)
-                mapeo['subtipo_ruba'],  # Subtipo RUBA (Ej: Forestal)
-                lugar
+                nro_parte, fecha, hora, 
+                mapeo['nombre_siab'], mapeo['grupo_ruba'], mapeo['subtipo_ruba'], 
+                lugar, observaciones, comentario
             ))
             
             siniestro_id = cur.lastrowid
 
-            bomberos_seleccionados = request.form.getlist('bomberos_seleccionados')
-            for legajo in bomberos_seleccionados:
-                movil = request.form.get(f'movil_{legajo}')
-                rol = request.form.get(f'rol_{legajo}')
-                cur.execute("INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol) VALUES (%s, %s, %s, %s)", 
-                            (siniestro_id, legajo, movil, rol))
+            # PROCESAMOS EL PERSONAL
+            # Buscamos todos los legajos que enviaron algún tipo de asistencia
+            for key in request.form:
+                if key.startswith('asistencia_'):
+                    legajo = key.split('_')[1]
+                    estado_asistencia = request.form.get(key)
+                    
+                    # Solo guardamos si es 'PRESENTE' (Salió) o 'EN_CUARTEL'
+                    if estado_asistencia in ['PRESENTE', 'EN_CUARTEL']:
+                        movil = request.form.get(f'movil_{legajo}') if estado_asistencia == 'PRESENTE' else None
+                        rol = request.form.get(f'rol_{legajo}') if estado_asistencia == 'PRESENTE' else None
+                        
+                        cur.execute("""
+                            INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol, estado_asistencia) 
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (siniestro_id, legajo, movil, rol, estado_asistencia))
 
             db.commit()
-            flash(f"Registro #{siniestro_id} guardado con éxito.", "success")
+            flash(f"Registro #{siniestro_id} guardado como BORRADOR.", "success")
             return redirect(url_for('listado_siniestros'))
             
         except Exception as e:
             db.rollback()
-            print(f"Error al guardar: {e}")
             flash(f"Error al guardar: {str(e)}", "danger")
             return redirect(url_for('nueva_planilla_nexo'))
 
     # --- MÉTODO GET: CARGA DE FORMULARIO ---
     
-    # 1. Cargamos los tipos de siniestros mapeados (IMPORTANTE: incluir grupo_ruba y el ORDER BY)
-    cur.execute("""
-        SELECT id, nombre_siab, grupo_ruba 
-        FROM tipos_siniestros 
-        ORDER BY grupo_ruba ASC, nombre_siab ASC
-    """)
+    cur.execute("SELECT id, nombre_siab, grupo_ruba FROM tipos_siniestros ORDER BY grupo_ruba ASC, nombre_siab ASC")
     res_tipos = cur.fetchall()
 
-    # 2. Cargamos el personal (el resto sigue igual)
+    # ORDENAMIENTO POR SITUACIÓN: Activo > Auxiliar > Reserva
     cur.execute("""
         SELECT legajo, nombre, apellido, situacion 
         FROM legajos 
-        WHERE situacion LIKE '%ACTIVO%' OR situacion LIKE '%RESERVA%'
-        ORDER BY apellido ASC
+        WHERE situacion IN ('Activo', 'Auxiliar', 'Reserva')
+        ORDER BY 
+            CASE 
+                WHEN situacion = 'Activo' THEN 0
+                WHEN situacion = 'Auxiliar' THEN 1
+                WHEN situacion = 'Reserva' THEN 2
+                ELSE 3
+            END ASC, 
+            apellido ASC
     """)
     res_bomberos = cur.fetchall()
     
@@ -2060,11 +2081,9 @@ def nueva_planilla_nexo():
     hora_hoy = datetime.now().strftime('%H:%M')
     
     cur.close()
-    db.close()
-    
     return render_template('nexo_form.html', 
                            bomberos=res_bomberos, 
-                           tipos_siniestros=res_tipos, # <-- Pasamos los tipos al HTML
+                           tipos_siniestros=res_tipos,
                            fecha_hoy=fecha_hoy, 
                            hora_hoy=hora_hoy)
     

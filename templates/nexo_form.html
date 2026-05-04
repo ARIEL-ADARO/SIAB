@@ -38,22 +38,58 @@
                             
                             <!-- Datos del Siniestro -->
                             <div class="row g-3 mb-4 p-3 bg-white rounded shadow-sm border-start border-danger border-5">
+                                
+                                <!-- Primera Fila: RUBA, Tipo y Ubicación -->
                                 <div class="col-md-2">
                                     <label class="form-label fw-bold small">Nro Parte RUBA</label>
-                                    <input type="text" name="nro_parte" class="form-control border-danger" required>
+                                    <!-- Cambiado a nro_part_ruba según tu tabla -->
+                                    <input type="text" name="nro_part_ruba" class="form-control border-danger" required>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label fw-bold small text-danger">Tipo de Siniestro</label>
-                                    <select name="tipo_siniestro_id" class="form-select border-danger" required>
+                                    <!-- Cambiado a tipo_siniestro para guardar el nombre directamente -->
+                                    <select name="tipo_siniestro" class="form-select border-danger" required>
                                         <option value="">-- Seleccionar --</option>
                                         {% for t in tipos_siniestros %}
-                                            <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
+                                            <option value="{{ t.nombre_siab }}">{{ t.nombre_siab }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label fw-bold small">Ubicación / Lugar</label>
                                     <input type="text" name="lugar" class="form-control border-danger" placeholder="Ej: Calle San Martín 123" required>
+                                </div>
+
+                                <!-- Segunda Fila: Fecha, Hora e Instituciones -->
+                                <div class="col-md-3">
+                                        <label class="form-label fw-bold small">Fecha</label>
+                                        <input type="date" name="fecha" id="fecha" class="form-control border-danger" required>
+                                    </div>
+                                    
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-bold small">Hora Salida</label>
+                                        <input type="time" name="hora_salida" id="hora_salida" class="form-control border-danger" required>
+                                    </div>
+                                <div class="col-md-7">
+                                    <label class="form-label fw-bold small">Intervención de Instituciones</label>
+                                    <!-- Usamos la columna 'observaciones' para el nivel de intervención -->
+                                    <select name="observaciones" class="form-select border-danger" required>
+                                        <option value="No intervino otra institución bomberil" selected>No intervino otra institución bomberil</option>
+                                        <option value="Participó otro cuartel">Participó otro cuartel</option>
+                                        <option value="Participaron más de un cuartel">Participaron más de un cuartel</option>
+                                        <option value="Intervino la Regional">Intervino la Regional</option>
+                                        <option value="Intervino Federación">Intervino Federación</option>
+                                        <option value="Intervino Confederación">Intervino Confederación</option>
+                                        <option value="Intervino una o más brigadas">Intervino una o más brigadas</option>
+                                    </select>
+                                </div>
+
+                                <!-- Tercera Fila: Comentario General -->
+                                <div class="col-md-12">
+                                    <label class="form-label fw-bold small">Comentario General / Observaciones Detalladas</label>
+                                    <!-- Cambiado a comentario_general según tu tabla -->
+                                    <textarea name="comentario_general" class="form-control border-danger" rows="2" 
+                                            placeholder="Detalle nombre de otros cuarteles, números de regional o brigadas participantes..."></textarea>
                                 </div>
                             </div>
 
@@ -73,17 +109,20 @@
                                         <tr id="fila_{{ b.legajo }}">
                                             <td>
                                                 <div class="btn-group w-100" role="group">
+                                                    <!-- SALIÓ: Verde (Presente) -->
                                                     <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
                                                         id="p_{{ b.legajo }}" value="PRESENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'PRESENTE')">
                                                     <label class="btn btn-outline-success fw-bold" for="p_{{ b.legajo }}">SALIÓ</label>
 
+                                                    <!-- EN CUARTEL: Azul (Retén/Puntaje) -->
                                                     <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
-                                                        id="j_{{ b.legajo }}" value="JUSTIFICADO" onchange="actualizarInterfaz('{{ b.legajo }}', 'JUSTIFICADO')">
-                                                    <label class="btn btn-outline-warning fw-bold text-dark" for="j_{{ b.legajo }}">JUSTIF.</label>
+                                                        id="c_{{ b.legajo }}" value="EN_CUARTEL" onchange="actualizarInterfaz('{{ b.legajo }}', 'EN_CUARTEL')">
+                                                    <label class="btn btn-outline-primary fw-bold" for="c_{{ b.legajo }}">EN CUARTEL</label>
 
+                                                    <!-- LIMPIAR: Gris (Estado Neutro/No asistió) -->
                                                     <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
-                                                        id="a_{{ b.legajo }}" value="AUSENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'AUSENTE')" checked>
-                                                    <label class="btn btn-outline-danger fw-bold" for="a_{{ b.legajo }}">NO</label>
+                                                        id="n_{{ b.legajo }}" value="AUSENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'AUSENTE')" checked>
+                                                    <label class="btn btn-outline-secondary fw-bold" for="n_{{ b.legajo }}">X</label>
                                                 </div>
                                             </td>
                                             <td>
@@ -131,23 +170,27 @@ function actualizarInterfaz(legajo, estado) {
     let fila = document.getElementById('fila_' + legajo);
     let controles = document.querySelectorAll('.select-control-' + legajo);
     
+    // Eliminamos clases previas para limpiar el estado visual de la fila
     fila.classList.remove('fila-presente', 'fila-justificado', 'fila-ausente');
 
     if (estado === 'PRESENTE') {
-        fila.classList.add('fila-presente');
+        // Estilo para quien SALIÓ
+        fila.classList.add('fila-presente'); 
         controles.forEach(c => {
             c.disabled = false;
             c.setAttribute('required', 'required');
         });
-    } else if (estado === 'JUSTIFICADO') {
-        fila.classList.add('fila-justificado');
+    } else if (estado === 'EN_CUARTEL') {
+        // Estilo para quien queda EN CUARTEL
+        fila.classList.add('fila-justificado'); 
         controles.forEach(c => {
             c.disabled = true;
             c.removeAttribute('required');
-            c.value = "";
+            c.value = ""; // Limpia la selección de móvil/rol
         });
     } else {
-        fila.classList.add('fila-ausente');
+        // Estilo para estado neutro (Botón X)
+        fila.classList.add('fila-ausente'); 
         controles.forEach(c => {
             c.disabled = true;
             c.removeAttribute('required');
@@ -155,5 +198,19 @@ function actualizarInterfaz(legajo, estado) {
         });
     }
 }
+document.addEventListener('DOMContentLoaded', function() {
+    const ahora = new Date();
+
+    // Ajustar fecha (formato YYYY-MM-DD)
+    const anio = ahora.getFullYear();
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    document.getElementById('fecha').value = `${anio}-${mes}-${dia}`;
+
+    // Ajustar hora (formato HH:MM)
+    const horas = String(ahora.getHours()).padStart(2, '0');
+    const minutos = String(ahora.getMinutes()).padStart(2, '0');
+    document.getElementById('hora_salida').value = `${horas}:${minutos}`;
+});
 </script>
 {% endblock %}

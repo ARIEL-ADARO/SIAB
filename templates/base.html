@@ -13,8 +13,9 @@
             position: fixed;
             top: 0;
             width: 100%;
-            z-index: 1030;
+            z-index: 1050; /* Un poco más alto para que siempre esté arriba */
             background-color: #212529;
+            height: 56px;
         }
 
         /* El Sidebar fijo a la izquierda */
@@ -28,15 +29,25 @@
             z-index: 1000;
             overflow-y: auto;
             padding: 0;
+            transition: all 0.3s;
         }
 
-        /* Contenido principal desplazado para no quedar bajo el sidebar */
+        /* Contenido principal: La clave está en el display block y el width */
         .main-content {
-            margin-left: 250px;
             margin-top: 56px;
-            padding: 20px;
             min-height: 100vh;
             background-color: #f4f4f4;
+            display: block;
+            /* Si la pantalla es grande, dejamos el espacio para el sidebar */
+            padding: 20px;
+            margin-left: 250px; 
+            width: calc(100% - 250px);
+        }
+
+        /* Evitamos que el body tenga scroll lateral por las dudas */
+        body {
+            overflow-x: hidden;
+            width: 100%;
         }
 
         /* Estilos para los links del sidebar */
@@ -48,18 +59,16 @@
             background: #333;
             color: #fff;
         }
-        .sidebar-section {
-            padding: 15px 20px 5px;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            color: #666;
-            font-weight: bold;
-        }
 
-        /* Adaptabilidad para móviles */
+        /* Adaptabilidad para móviles: aquí la barra se oculta o cambia */
         @media (max-width: 991px) {
-            .sidebar { width: 100%; position: relative; top: 0; }
-            .main-content { margin-left: 0; margin-top: 0; }
+            .sidebar { 
+                display: none !important; /* En móviles la ocultamos (podés usar el menú de la navbar) */
+            }
+            .main-content { 
+                margin-left: 0; 
+                width: 100%; 
+            }
         }
     </style>
     {% block estilos %}{% endblock %}
@@ -164,11 +173,9 @@
 
         <!-- CONTENIDO PRINCIPAL -->
         <main class="main-content">
-            <div class="container-fluid">
                 {% block contenido %}
                     <!-- Aquí se inyecta el contenido de las otras páginas -->
                 {% endblock %}
-            </div>
         </main>
 
     </div>

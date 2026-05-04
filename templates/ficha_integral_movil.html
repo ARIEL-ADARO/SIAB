@@ -44,16 +44,12 @@
 
     <div class="tab-content border border-top-0 p-4 bg-white shadow-sm rounded-bottom" id="fichaTabContent">
         
-        <!-- PESTAÑA 1: MANTENIMIENTO (TÉCNICA) - REGISTROS PERMANENTES -->
-        <div class="tab-pane fade" id="mantenimiento">
+        <!-- PESTAÑA 1: MANTENIMIENTO (Ahora es la activa por defecto) -->
+        <div class="tab-pane fade show active" id="mantenimiento">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                    <h5 class="mb-0">Historial de Intervenciones Técnicas</h5>
-                    <small class="text-muted"><i class="fas fa-lock me-1"></i> Los registros cargados no pueden ser modificados por seguridad patrimonial.</small>
-                </div>
+                <h5>Historial de Intervenciones Técnicas</h5>
                 <span class="badge bg-dark fs-6">Kilometraje Actual: {{ movil.km_inicial or 0 }} km</span>
             </div>
-            
             <div class="table-responsive">
                 <table class="table table-striped align-middle">
                     <thead class="table-light">
@@ -62,7 +58,6 @@
                             <th>Tipo</th>
                             <th>Descripción</th>
                             <th>KM</th>
-                            <th>Importe</th>
                             <th class="text-end">Acciones</th>
                         </tr>
                     </thead>
@@ -73,22 +68,19 @@
                             <td><span class="badge bg-info text-dark">{{ reg.tipo_mantenimiento }}</span></td>
                             <td>{{ reg.descripcion }}</td>
                             <td>{{ reg.km_unidad }}</td>
-                            <td>${{ "{:,.2f}".format(reg.importe_total or 0) }}</td>
                             <td class="text-end">
                                 <div class="btn-group">
-                                    <a href="{{ url_for('editar_mantenimiento', id_reg=reg.id) }}" class="btn btn-sm btn-outline-primary" title="Editar">
+                                    <a href="{{ url_for('editar_mantenimiento', id_reg=reg.id) }}" class="btn btn-sm btn-outline-primary">
                                         <i class="fas fa-pen"></i>
                                     </a>
                                     <a href="{{ url_for('eliminar_mantenimiento', id_reg=reg.id) }}" 
                                     class="btn btn-sm btn-outline-danger" 
-                                    onclick="return confirm('¿Confirma eliminar este registro de mantenimiento?')" title="Eliminar">
+                                    onclick="return confirm('¿Eliminar registro?')">
                                         <i class="fas fa-trash"></i>
                                     </a>
                                 </div>
                             </td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="6" class="text-center py-4">No hay registros cargados.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -96,8 +88,9 @@
         </div>
 
         <!-- PESTAÑA 2: HISTORIA (PATRIMONIO) -->
-        <div class="tab-pane fade show active" id="historia">
-            <div class="row">
+        <div class="tab-pane fade" id="historia"> 
+            <!-- Aquí adentro pegas lo que me pasaste -->
+            <div class="row mt-3"> 
                 <div class="col-md-6">
                     <h5 class="text-primary border-bottom pb-2">Identidad y Origen</h5>
                     <table class="table table-borderless">
@@ -124,7 +117,7 @@
                     {% endif %}
                 </div>
             </div>
-        </div>
+        </div> <!-- Este cierre de DIV es fundamental -->
 
         <!-- PESTAÑA 3: REGISTRO OPERATIVO (SINIESTROS) -->
         <div class="tab-pane fade" id="operativo">
