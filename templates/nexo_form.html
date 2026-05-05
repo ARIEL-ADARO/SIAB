@@ -48,10 +48,12 @@
                                 <div class="col-md-4">
                                     <label class="form-label fw-bold small text-danger">Tipo de Siniestro</label>
                                     <!-- Cambiado a tipo_siniestro para guardar el nombre directamente -->
-                                    <select name="tipo_siniestro" class="form-select border-danger" required>
+                                    <!-- Cambiamos el name para que coincida con la búsqueda del ID en app.py -->
+                                    <select name="tipo_siniestro_id" class="form-select border-danger" required>
                                         <option value="">-- Seleccionar --</option>
                                         {% for t in tipos_siniestros %}
-                                            <option value="{{ t.nombre_siab }}">{{ t.nombre_siab }}</option>
+                                            <!-- El valor enviado DEBE ser el ID numérico -->
+                                            <option value="{{ t.id }}">{{ t.nombre_siab }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -138,7 +140,10 @@
                                                 </select>
                                             </td>
                                             <td>
-                                                <select name="rol_{{ b.legajo }}" id="rol_{{ b.legajo }}" class="form-select select-control-{{ b.legajo }}" disabled>
+                                                <select name="rol_{{ b.legajo }}" id="rol_{{ b.legajo }}" 
+                                                        class="form-select select-control-{{ b.legajo }}" 
+                                                        disabled 
+                                                        onchange="validarRolCuartelero('{{ b.legajo }}')">
                                                     <option value="BOMBERO">BOMBERO</option>
                                                     <option value="CHOFER">CHOFER</option>
                                                     <option value="JEFE DE DOTACION">JEFE DE DOTACIÓN</option>
@@ -165,39 +170,67 @@
 </div>
 
 <script>
-// Corregí el nombre de la clase en el selector para que coincida con el HTML (select-control-)
 function actualizarInterfaz(legajo, estado) {
     let fila = document.getElementById('fila_' + legajo);
-    let controles = document.querySelectorAll('.select-control-' + legajo);
+    let selectMovil = document.getElementById('movil_' + legajo);
+    let selectRol = document.getElementById('rol_' + legajo);
     
-    // Eliminamos clases previas para limpiar el estado visual de la fila
+    // Limpiamos estilos de fila
     fila.classList.remove('fila-presente', 'fila-justificado', 'fila-ausente');
 
     if (estado === 'PRESENTE') {
-        // Estilo para quien SALIÓ
+        // --- CASO: SALIÓ EN MÓVIL ---
         fila.classList.add('fila-presente'); 
-        controles.forEach(c => {
-            c.disabled = false;
-            c.setAttribute('required', 'required');
-        });
-    } else if (estado === 'EN_CUARTEL') {
-        // Estilo para quien queda EN CUARTEL
+        selectMovil.disabled = false;
+        selectRol.disabled = false;
+        selectMovil.setAttribute('required', 'required');
+        selectRol.setAttribute('required', 'required');
+    } 
+    else if (estado === 'EN_CUARTEL') {
+        // --- CASO: QUEDÓ EN BASE (Retén/Imaginaria/etc) ---
         fila.classList.add('fila-justificado'); 
-        controles.forEach(c => {
-            c.disabled = true;
-            c.removeAttribute('required');
-            c.value = ""; // Limpia la selección de móvil/rol
-        });
-    } else {
-        // Estilo para estado neutro (Botón X)
+        
+        // NO forzamos el rol de Cuartelero, dejamos que el usuario elija
+        selectRol.disabled = false; 
+        selectRol.setAttribute('required', 'required');
+        
+        // El móvil SÍ se bloquea y se limpia, porque no salió del cuartel
+        selectMovil.value = ""; 
+        selectMovil.disabled = true;
+        selectMovil.removeAttribute('required');
+    } 
+    else {
+        // --- CASO: AUSENTE (Botón X) ---
         fila.classList.add('fila-ausente'); 
-        controles.forEach(c => {
-            c.disabled = true;
-            c.removeAttribute('required');
-            c.value = "";
-        });
+        selectMovil.disabled = true;
+        selectRol.disabled = true;
+        selectMovil.value = "";
+        selectRol.value = "BOMBERO"; // Valor por defecto
+        selectMovil.removeAttribute('required');
+        selectRol.removeAttribute('required');
     }
 }
+
+// Mantenemos esta función para asegurar que si eligen "CUARTELERO" 
+// manualmente (estando como "PRESENTE"), el móvil se bloquee.
+function validarRolCuartelero(legajo) {
+    let selectMovil = document.getElementById('movil_' + legajo);
+    let selectRol = document.getElementById('rol_' + legajo);
+    
+    if (selectRol.value === "CUARTELERO") {
+        selectMovil.value = "";
+        selectMovil.disabled = true;
+        selectMovil.removeAttribute('required');
+    } else {
+        // Solo rehabilitar móvil si la asistencia es "SALIÓ" (PRESENTE)
+        let radioSalió = document.getElementById('p_' + legajo);
+        if (radioSalió && radioSalió.checked) {
+            selectMovil.disabled = false;
+            selectMovil.setAttribute('required', 'required');
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const ahora = new Date();
 

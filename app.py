@@ -143,7 +143,7 @@ def login():
             session["usuario_id"] = usuario["id"]
             session["username"]   = usuario["username"]
             session["rol"]        = usuario["rol"]
-            session["legajo"]     = usuario["legajo"]
+            session["legajo"]     = str(usuario["legajo"])
             session["nombre"]     = nombre_completo
             session["grado"]      = usuario.get("grado") or "BOMBERO" 
             session["cargo"]      = usuario.get("cargo") or ""
@@ -600,14 +600,12 @@ def detalle_siniestro(id):
     db = get_db()
     cur = db.cursor(dictionary=True)
     
-    # 1. Traemos los datos del siniestro (para el encabezado y validación de fecha)
     cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
     siniestro = cur.fetchone()
     
-    # 2. Traemos al personal. 
-    # IMPORTANTE: Asegúrate de que 'puntaje' sea el nombre real de tu columna en nexo_personal
+    # Traemos al personal con el nombre de columna exacto de tu tabla
     cur.execute("""
-        SELECT p.legajo, p.movil, p.rol, p.puntaje, p.estado_asistencia,
+        SELECT p.legajo, p.movil, p.rol, p.puntos_operativos, 
                l.nombre, l.apellido, l.grado as jerarquia 
         FROM nexo_personal p
         JOIN legajos l ON p.legajo = l.legajo
@@ -616,9 +614,8 @@ def detalle_siniestro(id):
     personal = cur.fetchall()
     
     cur.close()
-    db.close() # Cerramos la conexión para liberar recursos
+    db.close()
     
-    # 3. Enviamos 'hoy' para que el HTML pueda aplicar el bloqueo de mes cerrado
     return render_template('nexo_detalle.html', 
                            siniestro=siniestro, 
                            personal=personal, 
@@ -629,21 +626,37 @@ def detalle_siniestro(id):
 @login_requerido
 def imprimir_siniestro(id):
     db = get_db()
-    cur = db.cursor(dictionary=True)
+    cur = db.cursor(dictionary=True, buffered=True)
+    
+    # Datos del siniestro
     cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
     siniestro = cur.fetchone()
     
+    # Traemos todo el personal
     cur.execute("""
-        SELECT p.*, l.nombre, l.apellido, l.jerarquia 
+        SELECT p.movil, p.rol, l.nombre, l.apellido, l.jerarquia 
         FROM nexo_personal p
         JOIN legajos l ON p.legajo = l.legajo
         WHERE p.siniestro_id = %s
     """, (id,))
-    personal = cur.fetchall()
-    cur.close()
+    todo_el_personal = cur.fetchall()
     
-    # IMPORTANTE: Esta renderiza tu planilla de firmas
-    return render_template('nexo_reporte.html', siniestro=siniestro, personal=personal)
+    # SEPARACIÓN LÓGICA
+    # 1. El personal que va a la tabla (excluimos al cuartelero)
+    personal_tabla = [p for p in todo_el_personal if p['rol'] != 'CUARTELERO']
+    
+    # 2. Identificamos al Cuartelero (solo uno por parte)
+    cuartelero = next((p for p in todo_el_personal if p['rol'] == 'CUARTELERO'), None)
+    
+    # 3. Identificamos al Jefe de Dotación para el pie de firma
+    jefe_dotacion = next((p for p in todo_el_personal if p['rol'] == 'JEFE DE DOTACION'), None)
+
+    cur.close()
+    return render_template('nexo_reporte.html', 
+                           siniestro=siniestro, 
+                           personal=personal_tabla, 
+                           cuartelero=cuartelero, 
+                           jefe_dotacion=jefe_dotacion)
 
 # ============================================================
 # CAPACITACIONES - POSTAS Y CALIFICACIONES
@@ -2001,22 +2014,22 @@ def nueva_planilla_nexo():
 
     if request.method == 'POST':
         try:
-            nro_parte = request.form.get('nro_parte')
+            # CAMBIO: Usar 'nro_part_ruba' para que coincida con el name del HTML
+            nro_parte = request.form.get('nro_part_ruba') 
             tipo_mapeo_id = request.form.get('tipo_siniestro_id') 
             lugar = request.form.get('lugar')
             fecha = request.form.get('fecha') 
             hora = request.form.get('hora_salida')
-            observaciones = request.form.get('observaciones') # Para instituciones
+            observaciones = request.form.get('observaciones')
             comentario = request.form.get('comentario_general')
 
-            # BUSCAMOS LOS DATOS DEL RUBA
             cur.execute("SELECT * FROM tipos_siniestros WHERE id = %s", (tipo_mapeo_id,))
             mapeo = cur.fetchone()
 
             if not mapeo:
                 raise Exception("Tipo de siniestro no válido")
 
-            # INSERTAMOS EL SINIESTRO (Queda como BORRADOR)
+            # 1. INSERTAMOS EL SINIESTRO
             sql_siniestro = """
                 INSERT INTO nexo_siniestros 
                 (nro_part_ruba, fecha, hora_salida, tipo_siniestro, grupo_ruba, subtipo_ruba, lugar, observaciones, comentario_general, estado)
@@ -2030,29 +2043,30 @@ def nueva_planilla_nexo():
             
             siniestro_id = cur.lastrowid
 
-            # PROCESAMOS EL PERSONAL
-            # Buscamos todos los legajos que enviaron algún tipo de asistencia
+            # 2. PROCESAMOS EL PERSONAL (Corrección de columnas)
             for key in request.form:
                 if key.startswith('asistencia_'):
                     legajo = key.split('_')[1]
                     estado_asistencia = request.form.get(key)
                     
-                    # Solo guardamos si es 'PRESENTE' (Salió) o 'EN_CUARTEL'
                     if estado_asistencia in ['PRESENTE', 'EN_CUARTEL']:
                         movil = request.form.get(f'movil_{legajo}') if estado_asistencia == 'PRESENTE' else None
                         rol = request.form.get(f'rol_{legajo}') if estado_asistencia == 'PRESENTE' else None
                         
+                        # IMPORTANTE: Usamos 'puntos_operativos' e inicializamos en 0.00
+                        # También quitamos 'asistencia' si no existe en tu tabla
                         cur.execute("""
-                            INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol, estado_asistencia) 
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (siniestro_id, legajo, movil, rol, estado_asistencia))
+                            INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol, puntos_operativos) 
+                            VALUES (%s, %s, %s, %s, 0.00)
+                        """, (siniestro_id, legajo, movil, rol))
 
             db.commit()
-            flash(f"Registro #{siniestro_id} guardado como BORRADOR.", "success")
+            flash(f"Registro #{siniestro_id} guardado con éxito.", "success")
             return redirect(url_for('listado_siniestros'))
             
         except Exception as e:
             db.rollback()
+            print(f"ERROR DE BASE DE DATOS: {e}") # <--- ESTO te dirá el error real en la consola
             flash(f"Error al guardar: {str(e)}", "danger")
             return redirect(url_for('nueva_planilla_nexo'))
 
@@ -2189,7 +2203,7 @@ def ruta_imprimir_nexo(id):
     
     return send_file(file_path, as_attachment=False)
 
-@app.route('/registro-salidas/calificar/<int:id>', methods=['GET', 'POST']) # Agregado methods
+@app.route('/registro-salidas/calificar/<int:id>', methods=['GET', 'POST'])
 @login_requerido
 def calificar_salida(id):
     rol_usuario = session.get('rol')
@@ -2200,25 +2214,39 @@ def calificar_salida(id):
         return redirect(url_for('listado_siniestros'))
     
     db = get_db()
-    cur = db.cursor(dictionary=True)
+    cur = db.cursor(dictionary=True, buffered=True)
+
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro = cur.fetchone()
+
+    if not siniestro:
+        flash("Siniestro no encontrado.", "danger")
+        return redirect(url_for('listado_siniestros'))
 
     if request.method == 'POST':
         try:
             legajos = request.form.getlist('legajos')
-            # Capturamos el comentario general que agregaste abajo
             comentario_general = request.form.get('observaciones')
             
             for legajo in legajos:
-                # Buscamos el puntaje específico de cada legajo
-                puntos = request.form.get(f'puntos_{legajo}')
+                puntos_raw = request.form.get(f'puntos_{legajo}')
                 
+                # --- VALIDACIÓN DE RANGO 0-5 ---
+                try:
+                    # Convertimos a float para permitir decimales (ej: 2.5)
+                    valor_puntos = float(puntos_raw)
+                    # Forzamos que el valor esté entre 0 y 5
+                    if valor_puntos < 0: valor_puntos = 0.0
+                    if valor_puntos > 5: valor_puntos = 5.0
+                except (ValueError, TypeError):
+                    valor_puntos = 0.0 # Por si llega un dato vacío o texto
+
                 cur.execute("""
                     UPDATE nexo_personal 
                     SET puntos_operativos = %s 
                     WHERE siniestro_id = %s AND legajo = %s
-                """, (puntos, id, legajo))
+                """, (valor_puntos, id, legajo))
 
-            # Cerramos el siniestro y guardamos la observación general
             cur.execute("""
                 UPDATE nexo_siniestros 
                 SET estado = 'CALIFICADO', 
@@ -2227,21 +2255,19 @@ def calificar_salida(id):
             """, (comentario_general, id))
 
             db.commit()
-            flash("Calificación guardada. El personal ha recibido sus puntos operativos.", "success")
+            flash("Calificación guardada con éxito.", "success")
             return redirect(url_for('listado_siniestros'))
         except Exception as e:
             db.rollback()
             flash(f"Error al procesar puntos: {e}", "danger")
 
     # --- MÉTODO GET ---
-    anio_siniestro = siniestro['fecha'].year # O usa datetime.now().year
+    anio_siniestro = siniestro['fecha'].year 
     cur.execute("SELECT puntos_por_asistencia FROM config_puntos WHERE anio = %s", (anio_siniestro,))
     config = cur.fetchone()
 
-    # Si no hay configuración para ese año, usamos un valor por defecto (ej: 1.0)
     puntos_sugeridos = config['puntos_por_asistencia'] if config else 1.0
 
-    # Ajustado para que use tu tabla 'legajos'
     cur.execute("""
         SELECT p.*, l.apellido, l.nombre 
         FROM nexo_personal p
@@ -2251,7 +2277,10 @@ def calificar_salida(id):
     personal = cur.fetchall()
 
     cur.close()
-    return render_template('nexo_calificar.html', siniestro=siniestro, personal=personal)     
+    return render_template('nexo_calificar.html', 
+                           siniestro=siniestro, 
+                           personal=personal, 
+                           puntos_sugeridos=puntos_sugeridos)
 
 # ============================================================
 # PANEL SISTEMA

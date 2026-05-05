@@ -49,14 +49,13 @@
     </div>
 
     <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">Personal Desplazado y en Cuartel</div>
+        <div class="card-header bg-primary text-white fw-bold">Personal en la Salida</div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
                     <tr>
-                        <th>Legajo</th>
+                        <th class="ps-3">Legajo</th>
                         <th>Nombre y Apellido</th>
-                        <th>Asistencia</th>
                         <th>Móvil</th>
                         <th>Rol en Salida</th>
                         <th class="text-center">Calificación</th>
@@ -64,23 +63,33 @@
                 </thead>
                 <tbody>
                     {% for p in personal %}
-                    <tr class="{{ 'table-info' if p.estado_asistencia == 'EN_CUARTEL' }}">
-                        <td>{{ p.legajo }}</td>
+                    <tr>
+                        <td class="ps-3 fw-bold">{{ p.legajo }}</td>
                         <td>{{ p.apellido }}, {{ p.nombre }}</td>
-                        <td>
-                            {% if p.estado_asistencia == 'PRESENTE' %}
-                                <span class="badge bg-success">SALIÓ</span>
-                            {% elif p.estado_asistencia == 'EN_CUARTEL' %}
-                                <span class="badge bg-primary">EN CUARTEL</span>
-                            {% else %}
-                                <span class="badge bg-secondary">---</span>
-                            {% endif %}
-                        </td>
                         <td>{{ p.movil if p.movil else '-' }}</td>
                         <td>{{ p.rol if p.rol else '-' }}</td>
-                        <td class="text-center fw-bold text-primary">
-                            {{ p.puntaje if p.puntaje else '-' }}
+                        
+                        <!-- AQUÍ VA EL CAMBIO EXACTO -->
+                        <td class="text-center fw-bold">
+                            {% if session.get('rol')|upper == 'ADMIN' %}
+                                {# El ADMIN de Bomberos Almafuerte ve todas las notas #}
+                                <span class="text-primary">
+                                    {{ "%.2f"|format(p.puntos_operativos) if p.puntos_operativos is not none else '0.00' }}
+                                </span>
+                            {% elif p.legajo|string == session.get('legajo')|string %}
+                                {# El Bombero solo ve su propio 2.50, 3.00, etc. #}
+                                <span class="text-success">
+                                    {{ "%.2f"|format(p.puntos_operativos) if p.puntos_operativos is not none else '0.00' }}
+                                </span>
+                            {% else %}
+                                {# Para los compañeros, se oculta el dato #}
+                                <span class="text-muted small">
+                                    <i class="bi bi-eye-slash"></i>
+                                </span>
+                            {% endif %}
                         </td>
+                        <!-- FIN DEL CAMBIO -->
+                        
                     </tr>
                     {% endfor %}
                 </tbody>
