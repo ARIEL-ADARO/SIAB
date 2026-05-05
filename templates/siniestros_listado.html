@@ -45,22 +45,38 @@
                     <td class="text-center">
                         <div class="btn-group shadow-sm">
                             <!-- BOTÓN VER -->
-                            <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-eye"></i> VER
+                            <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Detalles">
+                                <i class="bi bi-eye"></i>
                             </a>
 
                             <!-- BOTÓN IMPRIMIR -->
-                            <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-danger" target="_blank">
-                                <i class="bi bi-printer-fill"></i> IMPRIMIR
-                            </a>                                            
+                            <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-outline-danger" target="_blank" title="Imprimir Planilla">
+                                <i class="bi bi-printer-fill"></i>
+                            </a>
 
-                            {# Verificamos si es ADMIN (convertimos a mayúsculas para comparar) #}
+                            {# Lógica para ADMIN / ENCARGADOS #}
                             {% if session.get('rol')|upper in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
+                                
+                                <!-- BOTÓN EDITAR (NUEVO) -->
+                                <a href="{{ url_for('editar_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-warning" title="Editar Siniestro">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+
+                                <!-- BOTÓN CALIFICAR -->
                                 {% if s.estado == 'BORRADOR' %}
                                     <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
-                                        <i class="bi bi-star-fill"></i> Calificar
+                                        <i class="bi bi-star-fill"></i>
                                     </a>
                                 {% endif %}
+
+                                <!-- BOTÓN ELIMINAR (NUEVO) -->
+                                <form action="{{ url_for('eliminar_siniestro', id=s.id) }}" method="POST" style="display:inline;" 
+                                    onsubmit="return confirm('¿Está seguro de eliminar el Parte RUBA #{{ s.nro_part_ruba }}? Esta acción borrará también el personal asociado.');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar Permanecientemente">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+
                             {% endif %}
                         </div>
                     </td>

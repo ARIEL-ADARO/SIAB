@@ -642,20 +642,29 @@ def imprimir_siniestro(id):
     todo_el_personal = cur.fetchall()
     
     # SEPARACIÓN LÓGICA
-    # 1. El personal que va a la tabla (excluimos al cuartelero)
-    personal_tabla = [p for p in todo_el_personal if p['rol'] != 'CUARTELERO']
+    # 1. El personal que va a la tabla (excluimos al cuartelero de la lista principal)
+    # Usamos .strip().upper() para evitar errores por espacios o minúsculas
+    personal_tabla = [p for p in todo_el_personal if str(p['rol']).strip().upper() != 'CUARTELERO']
     
-    # 2. Identificamos al Cuartelero (solo uno por parte)
-    cuartelero = next((p for p in todo_el_personal if p['rol'] == 'CUARTELERO'), None)
+    # 2. Identificamos al Cuartelero
+    # Buscamos cualquier variante: 'Cuartelero', 'cuartelero ', 'CUARTELERO'
+    cuartelero = next((p for p in todo_el_personal if str(p['rol']).strip().upper() == 'CUARTELERO'), None)
     
-    # 3. Identificamos al Jefe de Dotación para el pie de firma
-    jefe_dotacion = next((p for p in todo_el_personal if p['rol'] == 'JEFE DE DOTACION'), None)
+    # 3. Identificamos al Jefe de Dotación
+    jefe_dotacion = next((p for p in todo_el_personal if str(p['rol']).strip().upper() == 'JEFE DE DOTACION'), None)
 
     cur.close()
+    
+    # Agregamos una validación extra para el nombre del cuartelero
+    nombre_cuartelero = "NO ASIGNADO"
+    if cuartelero:
+        nombre_cuartelero = f"{cuartelero['apellido']} {cuartelero['nombre']}"
+
     return render_template('nexo_reporte.html', 
                            siniestro=siniestro, 
                            personal=personal_tabla, 
-                           cuartelero=cuartelero, 
+                           cuartelero=cuartelero,
+                           nombre_cuartelero=nombre_cuartelero, # Pasamos el nombre ya armado
                            jefe_dotacion=jefe_dotacion)
 
 # ============================================================
@@ -2100,7 +2109,117 @@ def nueva_planilla_nexo():
                            tipos_siniestros=res_tipos,
                            fecha_hoy=fecha_hoy, 
                            hora_hoy=hora_hoy)
+
+@app.route('/registro-salidas/eliminar/<int:id>', methods=['POST'])
+@login_requerido
+def eliminar_siniestro(id):
+    # Verificación de seguridad
+    if session.get('rol').upper() not in ['ADMIN', 'SUPERVISOR', 'ENCARGADO']:
+        return "No tiene permisos para realizar esta acción", 403
+
+    db = get_db()
+    cur = db.cursor()
     
+    try:
+        # 1. Borramos el personal asociado al siniestro primero
+        cur.execute("DELETE FROM nexo_personal WHERE siniestro_id = %s", (id,))
+        # 2. Borramos el siniestro principal
+        cur.execute("DELETE FROM nexo_siniestros WHERE id = %s", (id,))
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error al eliminar: {e}")
+    finally:
+        cur.close()
+        
+    return redirect(url_for('listado_siniestros'))
+
+@app.route('/siniestro/editar/<int:id>')
+@login_requerido
+def editar_siniestro(id):
+    db = get_db()
+    cur = db.cursor(dictionary=True) 
+    
+    # 1. Datos del siniestro
+    cur.execute("SELECT * FROM nexo_siniestros WHERE id = %s", (id,))
+    siniestro_seleccionado = cur.fetchone() 
+    
+    # 2. Tipos de siniestro (AQUÍ ESTABA EL ERROR)
+    cur.execute("SELECT id, nombre_siab FROM tipos_siniestros")
+    tipos = cur.fetchall()  # <--- Asegúrate de que se llame 'tipos'
+
+    # 3. Personal que participó
+    cur.execute("SELECT legajo, movil, rol FROM nexo_personal WHERE siniestro_id = %s", (id,))
+    personal_asistente = cur.fetchall()
+
+    # 4. Lista general de bomberos (usando la tabla 'legajos')
+    cur.execute("SELECT legajo, nombre, apellido FROM legajos ORDER BY apellido ASC")
+    lista_todos_bomberos = cur.fetchall()
+
+    cur.close()
+
+    # 5. Pasamos las variables a la plantilla
+    return render_template('nexo_form.html', 
+                           siniestro=siniestro_seleccionado, 
+                           tipos_siniestros=tipos,  # Ahora 'tipos' ya existe
+                           personal_cargado=personal_asistente, 
+                           bomberos=lista_todos_bomberos,
+                           modo_edicion=True)
+
+@app.route('/registro-salidas/actualizar/<int:id>', methods=['POST'])
+@login_requerido
+def actualizar_siniestro(id):
+    db = get_db()
+    cur = db.cursor()
+    
+    # 1. Capturar datos del formulario
+    nro_part_ruba = request.form.get('nro_part_ruba')
+    lugar = request.form.get('lugar')
+    fecha = request.form.get('fecha')
+    hora_salida = request.form.get('hora_salida')
+    observaciones = request.form.get('observaciones')
+    comentario_general = request.form.get('comentario_general')
+    tipo_id = request.form.get('tipo_siniestro_id')
+
+    try:
+        # 2. Actualizar la tabla principal
+        sql_update = """
+            UPDATE nexo_siniestros 
+            SET nro_part_ruba=%s, lugar=%s, fecha=%s, hora_salida=%s, 
+                observaciones=%s, comentario_general=%s, tipo_siniestro=(SELECT nombre_siab FROM tipos_siniestros WHERE id=%s)
+            WHERE id=%s
+        """
+        cur.execute(sql_update, (nro_part_ruba, lugar, fecha, hora_salida, observaciones, comentario_general, tipo_id, id))
+
+        # 3. Actualizar el personal (lo más simple es borrar y re-insertar)
+        cur.execute("DELETE FROM nexo_personal WHERE siniestro_id = %s", (id,))
+        
+        # Consultar legajos para procesar la nueva asistencia
+        cur.execute("SELECT legajo FROM bomberos")
+        todos_los_legajos = [row[0] for row in cur.fetchall()]
+
+        for legajo in todos_los_legajos:
+            asistencia = request.form.get(f'asistencia_{legajo}')
+            if asistencia in ['PRESENTE', 'EN_CUARTEL']:
+                movil = request.form.get(f'movil_{legajo}', '')
+                rol = request.form.get(f'rol_{legajo}', 'BOMBERO')
+                
+                cur.execute("""
+                    INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol)
+                    VALUES (%s, %s, %s, %s)
+                """, (id, legajo, movil, rol))
+
+        db.commit()
+        # Puedes agregar un flash message aquí: flash("Registro actualizado correctamente")
+    except Exception as e:
+        db.rollback()
+        print(f"Error al actualizar: {e}")
+    finally:
+        cur.close()
+
+    return redirect(url_for('listado_siniestros'))
+
 @app.route('/planilla-nexo/imprimir/<int:id>')
 @login_requerido
 def imprimir_nexo(id):

@@ -66,30 +66,44 @@
                     <tr>
                         <td class="ps-3 fw-bold">{{ p.legajo }}</td>
                         <td>{{ p.apellido }}, {{ p.nombre }}</td>
-                        <td>{{ p.movil if p.movil else '-' }}</td>
-                        <td>{{ p.rol if p.rol else '-' }}</td>
                         
-                        <!-- AQUÍ VA EL CAMBIO EXACTO -->
+                        {# --- CORRECCIÓN MÓVIL --- #}
+                        <td>
+                            {% if p.movil in [None, '-', '', 'None'] or p.rol|upper in ['CUARTELERO', 'OPERADOR DE RADIO'] %}
+                                <span class="badge bg-dark-subtle text-dark border-0">
+                                    <i class="bi bi-house-door me-1"></i> BASE
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary px-2">
+                                    <i class="bi bi-truck me-1"></i> {{ p.movil }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        {# --- CORRECCIÓN ROL --- #}
+                        <td>
+                            {% if p.rol in [None, '-', '', 'None'] %}
+                                <span class="text-muted small italic">BOMBERO</span>
+                            {% else %}
+                                <span class="text-uppercase small fw-semibold">{{ p.rol }}</span>
+                            {% endif %}
+                        </td>
+                        
                         <td class="text-center fw-bold">
                             {% if session.get('rol')|upper == 'ADMIN' %}
-                                {# El ADMIN de Bomberos Almafuerte ve todas las notas #}
                                 <span class="text-primary">
                                     {{ "%.2f"|format(p.puntos_operativos) if p.puntos_operativos is not none else '0.00' }}
                                 </span>
                             {% elif p.legajo|string == session.get('legajo')|string %}
-                                {# El Bombero solo ve su propio 2.50, 3.00, etc. #}
                                 <span class="text-success">
                                     {{ "%.2f"|format(p.puntos_operativos) if p.puntos_operativos is not none else '0.00' }}
                                 </span>
                             {% else %}
-                                {# Para los compañeros, se oculta el dato #}
                                 <span class="text-muted small">
                                     <i class="bi bi-eye-slash"></i>
                                 </span>
                             {% endif %}
                         </td>
-                        <!-- FIN DEL CAMBIO -->
-                        
                     </tr>
                     {% endfor %}
                 </tbody>

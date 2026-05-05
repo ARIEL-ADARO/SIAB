@@ -55,14 +55,25 @@
                                     <small class="text-muted">Legajo: #{{ p.legajo }}</small>
                                     <input type="hidden" name="legajos" value="{{ p.legajo }}">
                                 </td>
-                                <td>
-                                    {% if p.rol == 'CUARTELERO' or p.rol == 'OPERADOR DE RADIO' %}
-                                        <span class="badge rounded-pill bg-dark px-3">BASE / CUARTEL</span>
-                                    {% else %}
-                                        <span class="badge rounded-pill bg-secondary px-3">{{ p.movil if p.movil else 'SIN MÓVIL' }}</span>
-                                    {% endif %}
-                                    <div class="small text-muted mt-1">{{ p.rol }}</div>
-                                </td>
+                                    <td>
+                                        {% if p.rol == 'CUARTELERO' or p.rol == 'OPERADOR DE RADIO' or not p.movil or p.movil == 'None' %}
+                                            <span class="badge rounded-pill bg-dark px-3">
+                                                <i class="bi bi-house-door me-1"></i>BASE / CUARTEL
+                                            </span>
+                                        {% else %}
+                                            <span class="badge rounded-pill bg-secondary px-3">
+                                                <i class="bi bi-truck me-1"></i>{{ p.movil }}
+                                            </span>
+                                        {% endif %}
+                                        
+                                        <div class="small text-muted mt-1 text-uppercase">
+                                            {% if p.rol and p.rol != 'None' %}
+                                                {{ p.rol }}
+                                            {% else %}
+                                                BOMBERO
+                                            {% endif %}
+                                        </div>
+                                    </td>
                                 <!-- Dentro del bucle for p in personal -->
                                 <td>
                                     <div class="input-group">
