@@ -2154,10 +2154,21 @@ def editar_siniestro(id):
     personal_asistente = cur.fetchall()
 
     # 4. Lista general de bomberos (usando la tabla 'legajos')
-    cur.execute("SELECT legajo, nombre, apellido FROM legajos ORDER BY apellido ASC")
+    cur.execute("""
+        SELECT l.legajo, l.nombre, l.apellido,
+            CASE WHEN np.legajo IS NOT NULL THEN 0 ELSE 1 END AS orden
+        FROM legajos l
+        LEFT JOIN nexo_personal np ON np.legajo = l.legajo AND np.siniestro_id = %s
+        ORDER BY orden ASC, l.apellido ASC
+    """, (id,))
     lista_todos_bomberos = cur.fetchall()
 
     cur.close()
+
+    print("=== PERSONAL CARGADO ===")
+    for p in personal_asistente:
+        print(p)
+    print("========================")
 
     # 5. Pasamos las variables a la plantilla
     return render_template('nexo_form.html', 
@@ -2196,14 +2207,14 @@ def actualizar_siniestro(id):
         cur.execute("DELETE FROM nexo_personal WHERE siniestro_id = %s", (id,))
         
         # Consultar legajos para procesar la nueva asistencia
-        cur.execute("SELECT legajo FROM bomberos")
+        cur.execute("SELECT legajo FROM legajos")
         todos_los_legajos = [row[0] for row in cur.fetchall()]
 
         for legajo in todos_los_legajos:
             asistencia = request.form.get(f'asistencia_{legajo}')
             if asistencia in ['PRESENTE', 'EN_CUARTEL']:
-                movil = request.form.get(f'movil_{legajo}', '')
-                rol = request.form.get(f'rol_{legajo}', 'BOMBERO')
+                movil = request.form.get(f'movil_{legajo}') or None  # "" → None
+                rol = request.form.get(f'rol_{legajo}') or 'BOMBERO'  # fallback
                 
                 cur.execute("""
                     INSERT INTO nexo_personal (siniestro_id, legajo, movil, rol)

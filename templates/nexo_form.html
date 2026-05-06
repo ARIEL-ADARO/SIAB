@@ -12,10 +12,26 @@
         border-bottom: 5px solid #dc3545 !important;
         padding: 15px; text-align: center;
     }
-    .btn-asistencia { width: 100%; margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; }
-    .fila-presente { background-color: #e8f5e9 !important; }
-    .fila-justificado { background-color: #fffde7 !important; }
-    .fila-ausente { background-color: #ffebee !important; opacity: 0.8; }
+    table tbody tr.fila-justificado td,
+    table tbody tr.fila-justificado th {
+        background-color: #e3f2fd !important;
+    }
+
+    table tbody tr.fila-presente td,
+    table tbody tr.fila-presente th {
+        background-color: #e8f5e9 !important;
+    }
+
+    table tbody tr.fila-ausente td,
+    table tbody tr.fila-ausente th {
+        background-color: #ffebee !important;
+        opacity: 0.8;
+    }
+
+    .fila-ausente { 
+        background-color: #ffebee !important; 
+        opacity: 0.8; 
+    }
 </style>
 
 <div class="container-fluid">
@@ -87,7 +103,7 @@
 
                             <!-- Tabla de Personal Operativo -->
                             <div class="table-responsive bg-white rounded shadow-sm border">
-                                <table class="table table-hover align-middle mb-0">
+                                <table class="table align-middle mb-0">
                                     <thead class="sticky-header">
                                         <tr>
                                             <th class="text-center" style="width: 280px;">ASISTENCIA</th>
@@ -98,31 +114,33 @@
                                     </thead>
                                     <tbody>
                                         {% for b in bomberos %}
-                                            {# 1. REEMPLAZO DE LA LÍNEA CON ERROR #}
-                                            {% set participante = none %}
+                                            {# 1. REEMPLAZO DE LA LÍNEA CON ERROR (Mantenemos tu lógica de búsqueda) #}
+                                            {# Buscamos si el bombero actual está en la lista de personal cargado #}
                                             {% if modo_edicion %}
+                                                {% set ns = namespace(participante=none) %}
                                                 {% for p in personal_cargado %}
-                                                    {# Comparamos convirtiendo ambos a string para evitar conflictos de tipos #}
-                                                    {% if p.legajo|string == b.legajo|string %}
-                                                        {% set participante = p %}
+                                                    {% if p.legajo|string|trim == b.legajo|string|trim %}
+                                                        {% set ns.participante = p %}
                                                     {% endif %}
                                                 {% endfor %}
+                                                {% set participante = ns.participante %}
+                                            {% else %}
+                                                {% set participante = none %}
                                             {% endif %}
 
-                                            {# 2. USO DE LA VARIABLE 'participante' EN LA FILA #}
-                                            <tr id="fila_{{ b.legajo }}">
+                                            <tr id="fila_{{ b.legajo }}" class="{{ clase_inicial }}">
                                                 <td>
                                                     <div class="btn-group w-100" role="group">
                                                         <!-- Opción: SALIÓ -->
                                                         <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
                                                             id="p_{{ b.legajo }}" value="PRESENTE" onchange="actualizarInterfaz('{{ b.legajo }}', 'PRESENTE')"
-                                                            {% if participante and participante.movil != "" %}checked{% endif %}>
+                                                            {% if participante and participante.movil %}checked{% endif %}>
                                                         <label class="btn btn-outline-success fw-bold" for="p_{{ b.legajo }}">SALIÓ</label>
 
                                                         <!-- Opción: EN CUARTEL -->
                                                         <input type="radio" class="btn-check" name="asistencia_{{ b.legajo }}" 
                                                             id="c_{{ b.legajo }}" value="EN_CUARTEL" onchange="actualizarInterfaz('{{ b.legajo }}', 'EN_CUARTEL')"
-                                                            {% if participante and participante.movil == "" and participante.rol == "CUARTELERO" %}checked{% endif %}>
+                                                            {% if participante and not participante.movil %}checked{% endif %}>
                                                         <label class="btn btn-outline-primary fw-bold" for="c_{{ b.legajo }}">EN CUARTEL</label>
 
                                                         <!-- Opción: AUSENTE -->
@@ -179,28 +197,33 @@ function actualizarInterfaz(legajo, estado) {
     let selectMovil = document.getElementById('movil_' + legajo);
     let selectRol = document.getElementById('rol_' + legajo);
     
-    if (!fila) return;
+    if (!fila || !selectMovil || !selectRol) return;
 
-    fila.classList.remove('fila-presente', 'fila-justificado', 'fila-ausente');
+    // Aplicar color inline a todas las celdas de la fila
+    let celdas = fila.querySelectorAll('td');
+    celdas.forEach(td => {
+        td.style.backgroundColor = '';
+        td.style.opacity = '';
+    });
 
     if (estado === 'PRESENTE') {
-        fila.classList.add('fila-presente'); 
+        celdas.forEach(td => td.style.backgroundColor = '#e8f5e9');
         selectMovil.disabled = false;
         selectRol.disabled = false;
-        // Obligatorio solo si sale en un móvil
         selectMovil.setAttribute('required', 'required');
     } 
     else if (estado === 'EN_CUARTEL') {
-        fila.classList.add('fila-justificado'); 
+        celdas.forEach(td => td.style.backgroundColor = '#e3f2fd');
         selectRol.disabled = false; 
-        
-        // Limpiamos y deshabilitamos el móvil por completo
         selectMovil.value = ""; 
         selectMovil.disabled = true;
-        selectMovil.removeAttribute('required'); // Quitamos la obligatoriedad
+        selectMovil.removeAttribute('required');
     }
     else {
-        fila.classList.add('fila-ausente'); 
+        celdas.forEach(td => {
+            td.style.backgroundColor = '#ffebee';
+            td.style.opacity = '0.8';
+        });
         selectMovil.disabled = true;
         selectRol.disabled = true;
         selectMovil.value = "";
@@ -209,44 +232,12 @@ function actualizarInterfaz(legajo, estado) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    {% if not modo_edicion %}
-        // Lógica para siniestro nuevo
-        const ahora = new Date();
-        document.getElementById('fecha').value = ahora.toISOString().split('T')[0];
-        document.getElementById('hora_salida').value = ahora.getHours().toString().padStart(2, '0') + ':' + ahora.getMinutes().toString().padStart(2, '0');
-    {% else %}
-        // Lógica para EDICIÓN: Forzamos la carga de datos guardados
-        {% for b in bomberos %}
-            {% for p in personal_cargado %}
-                if ("{{ b.legajo }}" === "{{ p.legajo }}") {
-                    
-                    // 1. Identificamos el estado
-                    let esPresente = "{{ p.movil }}" !== "";
-                    let estadoPresencia = esPresente ? 'PRESENTE' : 'EN_CUARTEL';
-                    
-                    // 2. ACTIVAR EL RADIO BUTTON CORRECTO (Crucial para el "pintado")
-                    let radioId = esPresente ? 'p_{{ b.legajo }}' : 'c_{{ b.legajo }}';
-                    let radioElement = document.getElementById(radioId);
-                    if (radioElement) {
-                        radioElement.checked = true;
-                    }
-                    
-                    // 3. Cargar los valores de los selects
-                    let sMovil = document.getElementById('movil_{{ b.legajo }}');
-                    let sRol = document.getElementById('rol_{{ b.legajo }}');
-                    
-                    if (sMovil) sMovil.value = "{{ p.movil }}";
-                    if (sRol) sRol.value = "{{ p.rol }}";
-                    
-                    // 4. Ejecutar la función visual
-                    actualizarInterfaz('{{ b.legajo }}', estadoPresencia);
-                }
-            {% endfor %}
-        {% endfor %}
-    {% endif %}
+    document.querySelectorAll('input[type="radio"]:checked').forEach(function(radio) {
+        const legajo = radio.name.replace('asistencia_', '');
+        actualizarInterfaz(legajo, radio.value);
+    });
 });
 
-// Habilitar campos antes de enviar para que Flask reciba los datos
 document.querySelector('form').addEventListener('submit', function() {
     document.querySelectorAll('select').forEach(select => select.disabled = false);
 });
