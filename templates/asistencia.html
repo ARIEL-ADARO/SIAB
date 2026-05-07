@@ -43,8 +43,8 @@
         </div>
         
         <div>
-            <a href="{{ url_for('inicio') }}" class="btn btn-outline-secondary shadow-sm fw-bold px-4">
-                <i class="bi bi-arrow-left me-2"></i>Volver al Panel
+            <a href="{{ url_for('historial_asistencia') }}" class="btn btn-outline-secondary shadow-sm fw-bold px-4">
+                <i class="bi bi-arrow-left me-2"></i>Volver a Historial
             </a>
             <span class="badge bg-dark ms-2 py-2">SIAB v3.1</span>
         </div>
@@ -160,36 +160,41 @@
     const postasPrevias = {{ postas_previas | tojson | safe if postas_previas else '[]' }};
     
     let bomberos = [];
-    let estados = asistenciasPrevias; // Inicializamos con lo que venga del servidor
+    let estados = asistenciasPrevias; 
     let contadorPostas = 0;
 
     document.addEventListener('DOMContentLoaded', async () => {
         const tipoSelect = document.getElementById('tipo');
         
-        // 1. Si estamos editando un evento que ya existe
+        // 1. Cargar la lista de bomberos PRIMERO (esencial para los combos)
+        await cargarBomberos();
+
+        // 2. Si estamos editando, configurar los switches según la DB
         if (eventoExistente) {
-            tipoSelect.value = eventoExistente.tipo;
+            document.getElementById('activarOficiales').checked = eventoExistente.califica_oficiales === 1;
+            document.getElementById('activarSuboficiales').checked = eventoExistente.califica_suboficiales === 1;
+            document.getElementById('activarEncargados').checked = eventoExistente.califica_encargados === 1;
+            
             document.getElementById('badge-estado').textContent = eventoExistente.estado;
             document.getElementById('badge-estado').className = `badge ms-2 ${eventoExistente.estado === 'FINALIZADO' ? 'bg-secondary' : 'bg-warning text-dark'}`;
             
             if (eventoExistente.estado === 'FINALIZADO') {
                 aplicarBloqueoSeguridad();
             }
+            
+            // Forzamos actualización de combos ahora que bomberos[] está lleno
+            actualizarComboCalificadores();
         }
 
-        // 2. Escuchar cambios manuales en el selector de tipo
+        // 3. Control de visibilidad de la sección postas
         tipoSelect.addEventListener('change', (e) => {
             const esCapacitacion = e.target.value === 'CAPACITACION';
             document.getElementById('seccion-postas').classList.toggle('d-none', !esCapacitacion);
         });
 
-        // 3. Carga inicial: Mostrar postas si por defecto está en CAPACITACION
         if (tipoSelect.value === 'CAPACITACION') {
             document.getElementById('seccion-postas').classList.remove('d-none');
         }
-
-        // 4. Cargar la lista de bomberos (esto llena la tabla y los combos)
-        await cargarBomberos();
     });
 
     async function cargarBomberos() {
@@ -198,7 +203,6 @@
             const res = await fetch(`/asistencia/bomberos?departamento_id=${depId}`);
             bomberos = await res.json();
             
-            // Sincronizar estados: Si el bombero no está en 'estados', lo agregamos como AUSENTE
             bomberos.forEach(b => {
                 if (!estados[b.legajo]) {
                     estados[b.legajo] = { estado: 'AUSENTE', observacion: '' };
@@ -207,16 +211,52 @@
 
             renderTabla();
             actualizarContadores();
-            actualizarComboCalificadores(); // Para llenar los select de las postas
             
-            // Cargar postas solo la primera vez o si hay previas
+            // Solo cargamos postas si es la primera vez
             if (contadorPostas === 0) {
                 cargarPostasPrevias();
             }
         } catch (e) {
-            console.error("Error:", e);
+            console.error("Error cargando bomberos:", e);
         }
     }
+
+function actualizarComboCalificadores() {
+    if (!bomberos || bomberos.length === 0) return;
+
+    const soloOfi = document.getElementById('activarOficiales').checked;
+    const soloSub = document.getElementById('activarSuboficiales').checked;
+    const soloEnc = document.getElementById('activarEncargados').checked;
+    const filtrar = soloOfi || soloSub || soloEnc;
+
+    const filtrados = bomberos.filter(b => {
+        if (!filtrar) return true;
+        
+        // Usamos 'grado' para Oficiales/Suboficiales y 'cargo' para Encargados
+        const grado = (b.grado || "").toUpperCase();
+        const cargo = (b.cargo || "").toUpperCase();
+
+        const esOfi = soloOfi && grado.includes('OFICIAL') && !grado.includes('SUB');
+        const esSub = soloSub && grado.includes('SUBOFICIAL');
+        // Filtramos encargados si la palabra 'ENCARGADO' está en su cargo
+        const esEnc = soloEnc && cargo.includes('ENCARGADO');
+        
+        return esOfi || esSub || esEnc;
+    });
+
+    document.querySelectorAll('.select-calificador').forEach(select => {
+        const valAnterior = select.value;
+        
+        let html = '<option value="">-- Seleccionar Calificador --</option>';
+        html += filtrados.map(b => `
+            <option value="${b.legajo}" ${b.legajo == valAnterior ? 'selected' : ''}>
+                ${b.apellido}, ${b.nombre} (${b.grado})
+            </option>
+        `).join('');
+        
+        select.innerHTML = html;
+    });
+}
 
 function renderTabla() {
     const tbody = document.getElementById('tbody');
@@ -255,30 +295,6 @@ function renderTabla() {
     document.getElementById('totalBomberos').textContent = bomberos.length;
 }
 
-    // --- NUEVA FUNCIÓN PARA LOS SWITCHES ---
-    function actualizarComboCalificadores() {
-        const soloOfi = document.getElementById('activarOficiales').checked;
-        const soloSub = document.getElementById('activarSuboficiales').checked;
-        const soloEnc = document.getElementById('activarEncargados').checked;
-
-        // Si ninguno está marcado, mostramos todos. Si hay alguno, filtramos.
-        const filtrar = soloOfi || soloSub || soloEnc;
-
-        const filtrados = bomberos.filter(b => {
-            if (!filtrar) return true;
-            const esOfi = soloOfi && b.rango_categoria === 'OFICIAL';
-            const esSub = soloSub && b.rango_categoria === 'SUBOFICIAL';
-            const esEnc = soloEnc && b.es_encargado === 1;
-            return esOfi || esSub || esEnc;
-        });
-
-        document.querySelectorAll('.select-calificador').forEach(select => {
-            const valAnterior = select.value;
-            select.innerHTML = '<option value="">-- Seleccionar Calificador --</option>' + 
-                filtrados.map(b => `<option value="${b.legajo}" ${b.legajo == valAnterior ? 'selected' : ''}>${b.apellido}, ${b.nombre}</option>`).join('');
-        });
-    }
-
     function setEstado(legajo, nuevo) {
         estados[legajo].estado = nuevo;
         renderTabla();
@@ -316,27 +332,33 @@ function renderTabla() {
         }
     }
 
-    function agregarPosta(nombre = '', calificador = '') {
-        contadorPostas++;
-        const div = document.createElement('div');
-        div.className = 'row g-2 mb-2 align-items-center border-bottom pb-2';
-        div.id = `posta-${contadorPostas}`;
-        div.innerHTML = `
-            <div class="col-md-6">
-                <input type="text" name="tema" class="form-control form-control-sm" placeholder="Tema" value="${nombre}">
-            </div>
-            <div class="col-md-5">
-                <select name="calificador" class="form-select form-select-sm select-calificador">
-                    <option value="">-- Seleccionar Calificador --</option>
+function agregarPosta(nombre = '', calificador = '') {
+    contadorPostas++;
+    const div = document.createElement('div');
+    div.className = 'row g-2 mb-2 align-items-center border-bottom pb-2';
+    div.innerHTML = `
+        <div class="col-md-6">
+            <input type="text" name="tema" class="form-control form-control-sm" value="${nombre}">
+        </div>
+        <div class="col-md-5">
+            <select name="calificador" class="form-select form-select-sm select-calificador">
                 </select>
-            </div>
-            <div class="col-md-1">
-                <button class="btn btn-sm btn-outline-danger" onclick="this.parentElement.parentElement.remove()"><i class="bi bi-trash"></i></button>
-            </div>
-        `;
-        document.getElementById('contenedor-inputs-postas').appendChild(div);
-        actualizarComboCalificadores(); // Llenamos el combo que acabamos de crear
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.parentElement.parentElement.remove()">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    document.getElementById('contenedor-inputs-postas').appendChild(div);
+    
+    // Crucial: llenar el combo apenas se crea
+    actualizarComboCalificadores(); 
+    
+    if(calificador) {
+        div.querySelector('select').value = calificador;
     }
+}
 
     function aplicarBloqueoSeguridad() {
         const contenedor = document.getElementById('contenedor-principal');
@@ -354,18 +376,24 @@ function renderTabla() {
         });
 
         const payload = {
-            evento_id: eventoExistente ? eventoExistente.id : null,
-            fecha: document.getElementById('fecha').value,
-            tipo: document.getElementById('tipo').value,
-            descripcion: document.getElementById('descripcion').value,
-            confirmar: confirmar,
-            temas: temas,
-            asistencias: Object.keys(estados).map(legajo => ({
-                legajo: legajo,
-                estado: estados[legajo].estado,
-                observacion: estados[legajo].observacion
-            }))
-        };
+                evento_id: eventoExistente ? eventoExistente.id : null,
+                fecha: document.getElementById('fecha').value,
+                tipo: document.getElementById('tipo').value,
+                descripcion: document.getElementById('descripcion').value,
+                
+                // --- AGREGAR ESTO: Captura de switches para enviar a Python ---
+                califica_oficiales: document.getElementById('activarOficiales').checked ? 1 : 0,
+                califica_suboficiales: document.getElementById('activarSuboficiales').checked ? 1 : 0,
+                califica_encargados: document.getElementById('activarEncargados').checked ? 1 : 0,
+                
+                confirmar: confirmar,
+                temas: temas,
+                asistencias: Object.keys(estados).map(legajo => ({
+                    legajo: legajo,
+                    estado: estados[legajo].estado,
+                    observacion: estados[legajo].observacion
+                }))
+            };
 
         const res = await fetch('/asistencia/guardar', {
             method: 'POST',

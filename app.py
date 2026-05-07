@@ -558,6 +558,104 @@ def historial_asistencia():
 
     return render_template("historial_asistencia.html", eventos=eventos, ver_anulados=ver_anulados)
 
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill
+from flask import send_file
+import io
+
+@app.route("/academia/exportar_excel/<int:evento_id>")
+@login_requerido
+def exportar_excel_academia(evento_id):
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # 1. Obtener datos del evento
+    cur.execute("SELECT * FROM eventos WHERE id = %s", (evento_id,))
+    evento = cur.fetchone()
+
+    # 2. Obtener temas/postas
+    cur.execute("SELECT id, nombre FROM evento_temas WHERE evento_id = %s ORDER BY id", (evento_id,))
+    temas = cur.fetchall()
+
+    # 3. Obtener presentes y sus notas
+    cur.execute("""
+        SELECT a.legajo, l.apellido, l.nombre, l.grado
+        FROM asistencia a
+        JOIN legajos l ON a.legajo = l.legajo
+        WHERE a.evento_id = %s AND a.estado = 'PRESENTE'
+        ORDER BY l.apellido
+    """, (evento_id,))
+    presentes = cur.fetchall()
+
+    cur.execute("SELECT legajo, tema_id, nota FROM asistencia_notas_temas WHERE evento_id = %s", (evento_id,))
+    notas_db = cur.fetchall()
+    mapa_notas = {(n['legajo'], n['tema_id']): n['nota'] for n in notas_db}
+
+    # --- Creación del Excel ---
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Calificaciones"
+
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="212529", end_color="212529", fill_type="solid")
+    center_align = Alignment(horizontal="center")
+
+    # Encabezados principales
+    headers = ["Legajo", "Grado", "Apellido y Nombre"]
+    for t in temas:
+        headers.append(t['nombre'])
+    headers.append("PROMEDIO")
+
+    ws.append(headers)
+
+    # Aplicar estilos a la fila de encabezados
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    # Cargar Datos
+    for p in presentes:
+        row = [p['legajo'], p['grado'], f"{p['apellido']}, {p['nombre']}"]
+        notas_bombero = []
+        
+        for t in temas:
+            nota = mapa_notas.get((p['legajo'], t['id']), 0)
+            row.append(nota if nota > 0 else "-")
+            if nota > 0:
+                notas_bombero.append(nota)
+        
+        # Calcular promedio para la última celda
+        if notas_bombero:
+            promedio = sum(notas_bombero) / len(notas_bombero)
+            row.append(round(promedio, 2))
+        else:
+            row.append("-")
+        
+        ws.append(row)
+
+    # Ajustar ancho de columnas automáticamente
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except: pass
+        ws.column_dimensions[column].width = max_length + 2
+
+    # Guardar en memoria y enviar
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    nombre_archivo = f"Planilla_Notas_ID_{evento_id}.xlsx"
+    conn.close()
+
+    return send_file(output, download_name=nombre_archivo, as_attachment=True)
+
 @app.route("/asistencia/detalle/<int:evento_id>")
 @login_requerido
 @rol_requerido('ADMIN', 'JEFATURA')
@@ -705,64 +803,6 @@ def guardar_temas_evento(evento_id):
     
     # Redirige de vuelta al detalle para empezar a calificar o ver el resumen
     return redirect(url_for('detalle_asistencia', evento_id=evento_id))
-
-@app.route("/asistencia/notas/guardar/<int:evento_id>", methods=["POST"])
-@login_requerido
-def guardar_calificaciones_postas(evento_id):
-    conn = get_db()
-    if not conn:
-        flash("Error de conexión.", "danger")
-        return redirect(url_for('detalle_asistencia', evento_id=evento_id))
-
-    # --- NUEVO: Capturamos la acción del botón ---
-    accion = request.form.get('accion') 
-
-    try:
-        cur = conn.cursor()
-        notas_vacias = 0
-        notas_guardadas = 0
-        
-        for key, value in request.form.items():
-            if key.startswith("nota_"):
-                if value.strip() == "":
-                    notas_vacias += 1
-                    continue
-                
-                parts = key.split("_")
-                legajo = parts[1]
-                tema_id = parts[2]
-                nota = float(value)
-
-                cur.execute("""
-                    INSERT INTO asistencia_notas_temas (evento_id, tema_id, legajo, nota)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE nota = VALUES(nota)
-                """, (evento_id, tema_id, legajo, nota))
-                notas_guardadas += 1
-
-        # --- NUEVO: Si la acción es finalizar, cambiamos el estado del evento ---
-        if accion == 'finalizar':
-            # Asumiendo que tu tabla eventos tiene una columna 'estado'
-            cur.execute("UPDATE eventos SET estado = 'FINALIZADO' WHERE id = %s", (evento_id,))
-            conn.commit()
-            flash("Planilla finalizada y cerrada. Ya no se puede editar.", "success")
-            return redirect(url_for('historial_asistencia'))
-
-        # Si es solo guardar borrador
-        conn.commit()
-        
-        if notas_guardadas > 0 and notas_vacias > 0:
-            flash(f"Borrador guardado: {notas_guardadas} notas cargadas, faltan {notas_vacias}.", "warning")
-        else:
-            flash("Borrador actualizado correctamente.", "info")
-            
-    except Exception as e:
-        if conn: conn.rollback()
-        flash(f"Error al guardar: {e}", "danger")
-    finally:
-        if conn: conn.close()
-
-    return redirect(url_for('cargar_notas', evento_id=evento_id))
 
 # ============================================================
 # DEPARTAMENTOS
@@ -1184,6 +1224,46 @@ def cargar_notas(evento_id):
                             presentes=presentes, 
                             temas=temas, 
                             mapa_notas=notas_map) # <-- Cambié el nombre a mapa_notas
+
+@app.route("/asistencia/calificaciones/guardar/<int:evento_id>", methods=["POST"])
+@login_requerido
+def guardar_calificaciones_postas(evento_id):
+    accion = request.form.get('accion') # 'guardar' o 'finalizar'
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        # 1. Limpiar notas anteriores para evitar duplicados (Borrador dinámico)
+        cur.execute("DELETE FROM asistencia_notas_temas WHERE evento_id = %s", (evento_id,))
+
+        # 2. Recorrer el form buscando claves que empiecen con 'nota_'
+        for key, value in request.form.items():
+            if key.startswith('nota_') and value.strip() != "":
+                # Extraemos los IDs del nombre del input: nota_LEGAJO_TEMAID
+                partes = key.split('_')
+                legajo = partes[1]
+                tema_id = partes[2]
+                nota = float(value)
+
+                cur.execute("""
+                    INSERT INTO asistencia_notas_temas (evento_id, legajo, tema_id, nota)
+                    VALUES (%s, %s, %s, %s)
+                """, (evento_id, legajo, tema_id, nota))
+
+        # 3. Si la acción es 'finalizar', actualizamos el estado del evento
+        if accion == 'finalizar':
+            cur.execute("UPDATE eventos SET estado = 'FINALIZADO' WHERE id = %s", (evento_id,))
+        
+        conn.commit()
+        flash("Planilla actualizada correctamente", "success")
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error al guardar: {str(e)}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for('historial_asistencia'))
 
 @app.route("/asistencia/exportar/<int:evento_id>/<formato>")
 @login_requerido
@@ -2515,24 +2595,28 @@ def academia_dashboard():
 
     try:
         # 1. KPIs: Usamos la tabla 'asistencia' que es donde guardas la nota
-        # Filtramos donde calificacion NO sea NULL para tener promedios reales
+        # 1. KPIs: Solo de eventos FINALIZADOS
         cur.execute("""
             SELECT 
-                AVG(calificacion) as promedio_cuerpo,
-                COUNT(calificacion) as total_examenes
-            FROM asistencia 
-            WHERE calificacion IS NOT NULL
+                AVG(a.calificacion) as promedio_cuerpo,
+                COUNT(a.calificacion) as total_examenes
+            FROM asistencia a
+            JOIN eventos e ON a.evento_id = e.id
+            WHERE a.calificacion IS NOT NULL 
+            AND e.estado = 'FINALIZADO'
         """)
         stats = cur.fetchone()
 
         # 2. Ranking de Bomberos (Top 10)
         cur.execute("""
             SELECT l.legajo, l.nombre, l.apellido, 
-                   AVG(a.calificacion) as promedio_personal,
-                   COUNT(a.calificacion) as cantidad_notas
+                AVG(a.calificacion) as promedio_personal,
+                COUNT(a.calificacion) as cantidad_notas
             FROM asistencia a
             JOIN legajos l ON a.legajo = l.legajo
-            WHERE a.calificacion IS NOT NULL
+            JOIN eventos e ON a.evento_id = e.id
+            WHERE a.calificacion IS NOT NULL 
+            AND e.estado = 'FINALIZADO'
             GROUP BY l.legajo, l.nombre, l.apellido
             ORDER BY promedio_personal DESC
             LIMIT 10
@@ -2546,7 +2630,9 @@ def academia_dashboard():
             SELECT e.descripcion as nombre_tema, AVG(a.calificacion) as promedio_tema
             FROM asistencia a
             JOIN eventos e ON a.evento_id = e.id
-            WHERE a.calificacion IS NOT NULL AND e.tipo = 'CAPACITACION'
+            WHERE a.calificacion IS NOT NULL 
+            AND e.tipo = 'CAPACITACION'
+            AND e.estado = 'FINALIZADO'  -- <--- AGREGAR ESTO
             GROUP BY e.descripcion
             ORDER BY promedio_tema DESC
         """)
@@ -2619,74 +2705,45 @@ def detalle_academico_bombero(legajo):
 @login_requerido
 def ver_academia_bombero(legajo):
     conn = get_db()
-    if not conn:
-        flash("Error de conexión.", "danger")
-        return redirect(url_for('inicio'))
+    cur = conn.cursor(dictionary=True)
 
     try:
-        cur = conn.cursor(dictionary=True)
-
-        # 1. Datos del bombero (Tabla: legajos)
-        cur.execute("SELECT legajo, nombre, apellido, grado, cargo, foto FROM legajos WHERE legajo = %s", (legajo,))
+        # 1. Datos del bombero
+        cur.execute("SELECT legajo, nombre, apellido, grado, foto FROM legajos WHERE legajo = %s", (legajo,))
         bombero = cur.fetchone()
 
         if not bombero:
             flash(f"Legajo {legajo} no encontrado.", "warning")
-            return redirect(url_for('bomberos'))
+            return redirect(url_for('academia_dashboard'))
 
-        bombero['jerarquia'] = bombero['grado']
-
-        # 2. Notas de ACADEMIA (Ajustado a tu estructura real)
-        # Filtramos por 'PRESENTE' ya que tu ENUM no tiene 'ANULADA'
+        # 2. Solo Notas de ACADEMIA (Eventos FINALIZADOS)
         cur.execute("""
-            SELECT et.nombre AS descripcion, ant.nota, a.fecha_registro as fecha
+            SELECT et.nombre AS descripcion, ant.nota, e.fecha
             FROM asistencia_notas_temas ant
             JOIN evento_temas et ON ant.tema_id = et.id
-            JOIN asistencia a ON ant.evento_id = a.evento_id AND ant.legajo = a.legajo
-            WHERE ant.legajo = %s AND a.estado = 'PRESENTE'
-            ORDER BY a.fecha_registro ASC 
+            JOIN eventos e ON ant.evento_id = e.id
+            WHERE ant.legajo = %s AND e.estado = 'FINALIZADO'
+            ORDER BY e.fecha DESC
         """, (legajo,))
         notas_academia = cur.fetchall()
 
-        # 3. Puntos de SALIDAS (Intervenciones reales confirmadas)
-        cur.execute("""
-            SELECT s.fecha, s.tipo_siniestro as descripcion, p.rol, p.puntos_operativos as puntos
-            FROM nexo_personal p
-            JOIN nexo_siniestros s ON p.siniestro_id = s.id
-            WHERE p.legajo = %s AND p.firma_confirmada = 1
-            ORDER BY s.fecha DESC
-        """, (legajo,))
-        puntos_salidas = cur.fetchall()
-
-        # 4. Cálculos de Totales y Preparación de Gráfica
-        # Nota: Usamos float() para asegurar compatibilidad con Chart.js
+        # 3. Cálculos Académicos Puros
         notas_validas = [float(n['nota']) for n in notas_academia if n['nota'] is not None]
         promedio = round(sum(notas_validas) / len(notas_validas), 2) if notas_validas else 0
         
-        total_puntos_operativos = sum(p['puntos'] for p in puntos_salidas)
-        total_salidas = len(puntos_salidas)
-
-        # Listas para Chart.js
-        fechas_grafica = [n['fecha'].strftime('%d/%m') for n in notas_academia if n['fecha']]
-        valores_grafica = [float(n['nota']) for n in notas_academia if n['nota'] is not None]
+        # Preparar Gráfica de Evolución Académica
+        fechas_grafica = [n['fecha'].strftime('%d/%m') for n in notas_academia][::-1] # Invertir para orden cronológico
+        valores_grafica = notas_validas[::-1]
 
         return render_template("academia_bombero.html", 
                                bombero=bombero, 
-                               notas_academia=notas_academia[::-1], 
-                               puntos_salidas=puntos_salidas,
+                               notas_academia=notas_academia, 
                                promedio=promedio,
-                               total_salidas=total_salidas,
-                               total_puntos_operativos=total_puntos_operativos,
                                fechas_grafica=fechas_grafica,
-                               valores_grafica=valores_grafica,
-                               jefe_dotacion={"nombre": "Firma Autorizada", "jerarquia": "Jefatura"},
-                               cuartelero={"nombre": "Cuartelero de Turno", "jerarquia": "Guardia"})
+                               valores_grafica=valores_grafica)
 
-    except Exception as e:
-        flash(f"Error técnico en Academia: {e}", "danger")
-        return redirect(url_for('inicio'))
     finally:
-        if conn: conn.close()
+        conn.close()
 
 # ============================================================
 # PERMISOS

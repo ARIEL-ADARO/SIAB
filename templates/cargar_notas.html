@@ -64,12 +64,14 @@
                             </th>
                             {% endfor %}
                         </tr>
+                        <th class="text-center bg-primary text-white" style="width: 80px;">PROM</th>
                     </thead>
                     <tbody>
                         {# Definimos los grados que NO se califican usualmente #}
                         {% set grados_superiores = ['JEFE', 'SUBJEFE', 'OFICIAL', 'SUB-OFICIAL'] %}
 
                         {% for p in presentes %}
+                        <td class="text-center fw-bold text-primary bg-light-subtle row-promedio">0.0</td>
                         <tr>
                             <td class="ps-4">
                                 <div class="fw-bold text-dark">{{ p.apellido }}, {{ p.nombre }}</div>
@@ -114,6 +116,25 @@
 </style>
 
 <script>
+// Cálculo de promedio en tiempo real
+document.addEventListener('input', function(e) {
+    if (e.target.classList.contains('nota-input')) {
+        const fila = e.target.closest('tr');
+        const inputs = fila.querySelectorAll('.nota-input');
+        let suma = 0;
+        let cont = 0;
+        
+        inputs.forEach(i => {
+            if(i.value !== "") {
+                suma += parseFloat(i.value);
+                cont++;
+            }
+        });
+        
+        const promedio = cont > 0 ? (suma / cont).toFixed(1) : "0.0";
+        fila.querySelector('.row-promedio').textContent = promedio;
+    }
+});
 function validarCierre(e) {
     const inputs = document.querySelectorAll('.nota-input');
     let vacios = 0;

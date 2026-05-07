@@ -1,0 +1,117 @@
+{% extends "base_reporte.html" %}
+
+{% block titulo_informe %}ACTA DE CAPACITACIÓN - SIAB #{{ evento.id }}{% endblock %}
+
+{% block cuerpo %}
+<div style="font-size: 9.5pt; margin-bottom: 15px;">
+    <table style="width: 100%; border: none; table-layout: fixed;">
+        <tr>
+            <td style="width: 70%;"><strong>Capacitación:</strong> {{ evento.nombre_evento or 'Instrucción General' }}</td>
+            <td style="text-align: right;"><strong>Fecha:</strong> {{ evento.fecha.strftime('%d/%m/%Y') }}</td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <strong>Departamento:</strong> {{ evento.nombre_departamento or 'CAPACITACIÓN INTERNA' }}
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="d-print-none mb-4">
+    <button onclick="window.print();" class="btn btn-primary">
+        <i class="bi bi-printer"></i> Imprimir Acta
+    </button>
+    <button onclick="window.close();" class="btn btn-dark">
+        <i class="bi bi-x-circle"></i> Cerrar
+    </button>
+</div>
+
+<style>
+    .tabla-notas { 
+        width: 100%; 
+        border-collapse: collapse; 
+        border: 1.5pt solid black !important; 
+        table-layout: fixed; 
+    }
+    .tabla-notas th, .tabla-notas td { 
+        border: 1.5pt solid black !important; 
+        padding: 6px; 
+        font-size: 8pt;
+        word-wrap: break-word;
+    }
+    .tabla-notas th { background-color: #f2f2f2 !important; text-align: center; -webkit-print-color-adjust: exact; }
+    .nota-valor { font-weight: bold; text-align: center; }
+    .promedio-celda { background-color: #f9f9f9 !important; font-weight: bold; text-align: center; }
+</style>
+
+<table class="tabla-notas">
+    <thead>
+        <tr>
+            <th style="width: 35%;">APELLIDO Y NOMBRE</th>
+            {# Generamos encabezados dinámicos para las postas #}
+            {% for tema in temas %}
+            <th style="font-size: 7pt;">{{ tema.nombre[:15] }}</th>
+            {% endfor %}
+            <th style="width: 12%;">PROM.</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in presentes %}
+        <tr>
+            <td style="padding: 8px;">
+                <strong>{{ p.apellido }}, {{ p.nombre }}</strong>
+                <br>
+                <small style="color: #666;">Legajo: #{{ p.legajo }} - {{ p.grado }}</small>
+            </td>
+
+            {# Notas de cada posta #}
+            {% for tema in temas %}
+            <td class="nota-valor">
+                {{ mapa_notas.get((p.legajo, tema.id), '-') }}
+            </td>
+            {% endfor %}
+
+            {# Cálculo de promedio en el reporte #}
+            <td class="promedio-celda">
+                {% set suma = [] %}
+                {% for tema in temas %}
+                    {% if (p.legajo, tema.id) in mapa_notas %}
+                        {% do suma.append(mapa_notas[(p.legajo, tema.id)]) %}
+                    {% endif %}
+                {% endfor %}
+                {% if suma|length > 0 %}
+                    {{ (suma|sum / suma|length)|round(1) }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if evento.observaciones %}
+<div style="border: 1.2pt solid black; padding: 8px; margin-top: 15px; font-size: 8.5pt;">
+    <strong>TEMARIO / OBSERVACIONES:</strong> {{ evento.observaciones }}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block firmas %}
+<table style="width: 100%; border: none; table-layout: fixed; text-align: center; margin-top: 40px;">
+    <tr>
+        <td style="width: 50%; vertical-align: top; padding: 0 20px;">
+            <div style="border-top: 1.5pt solid black; padding-top: 5px;">
+                <p style="margin: 0; font-size: 8pt; color: #777;">(Firma y Aclaración)</p>
+                <p style="margin: 0; font-size: 7pt; font-weight: bold; color: #333;">INSTRUCTOR / RESPONSABLE</p>
+            </div>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding: 0 20px;">
+            <div style="border-top: 1.5pt solid black; padding-top: 5px;">
+                <p style="margin: 0; font-size: 8pt; color: #777;">(Firma y Aclaración)</p>
+                <p style="margin: 0; font-size: 7pt; font-weight: bold; color: #333;">JEFE DE CUERPO / CAPACITACIÓN</p>
+            </div>
+        </td>
+    </tr>
+</table>
+{% endblock %}
