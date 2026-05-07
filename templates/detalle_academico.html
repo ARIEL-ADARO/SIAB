@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container-fluid mt-3">
+    <div class="d-flex align-items-center mb-4">
+        <a href="{{ url_for('academia_dashboard') }}" class="btn btn-outline-secondary me-3">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <div>
+            <h2 class="text-secondary mb-0 fw-bold">Ficha Académica Individual</h2>
+            <p class="text-muted mb-0">Legajo: <strong>{{ legajo }}</strong></p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body text-center p-4">
+                    <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+                        <i class="fas fa-user-graduate fa-2x text-primary"></i>
+                    </div>
+                    {% set total = namespace(suma=0, cuenta=0) %}
+                    {% for n in historial %}
+                        {% set total.suma = total.suma + n.calificacion %}
+                        {% set total.cuenta = total.cuenta + 1 %}
+                    {% endfor %}
+                    
+                    <h5 class="fw-bold mb-1">Promedio General</h5>
+                    <h1 class="display-4 fw-bold text-primary">
+                        {{ "%.2f"|format(total.suma / total.cuenta) if total.cuenta > 0 else '0.00' }}
+                    </h1>
+                    <span class="badge bg-dark px-3">Calificaciones: {{ total.cuenta }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-info"></i>Cronología de Evaluaciones</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha / Tema</th>
+                                    <th class="text-center">Nota</th>
+                                    <th>Instructor / Observación</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in historial %}
+                                <tr>
+                                    <td style="min-width: 200px;">
+                                        <div class="fw-bold">{{ item.nombre_tema }}</div>
+                                        <small class="text-muted"><i class="far fa-calendar-alt me-1"></i>{{ item.fecha_carga }}</small>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="fs-4 fw-bold {% if item.calificacion >= 7 %}text-success{% elif item.calificacion >= 4 %}text-warning{% else %}text-danger{% endif %}">
+                                            {{ "%.1f"|format(item.calificacion) }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="small fw-bold text-secondary">
+                                            <i class="fas fa-user-check me-1"></i>{{ item.calificado_por or 'S/D' }}
+                                        </div>
+                                        <p class="small mb-0 text-muted italic">
+                                            {{ item.observacion if item.observacion else 'Sin observaciones.' }}
+                                        </p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% if not historial %}
+                                <tr>
+                                    <td colspan="3" class="text-center py-5 text-muted">
+                                        No se registran calificaciones para este bombero.
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

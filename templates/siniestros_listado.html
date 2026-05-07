@@ -13,6 +13,14 @@
             <i class="bi bi-house-door"></i> Volver al Panel Principal
         </a>
     </div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="text-danger"><i class="bi bi-card-list"></i> Registros de Salida</h3>
+    
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="verAnulados" onchange="toggleAnulados()">
+        <label class="form-check-label fw-bold" for="verAnulados">Ver registros anulados</label>
+    </div>
+</div>
     <div class="card shadow-sm border-0">
         <div class="card-body p-0">
             <table class="table table-hover align-middle mb-0">
@@ -28,13 +36,19 @@
                 </thead>
                 <tbody>
                     {% for s in siniestros %}
-                    <tr>
-                        <td class="ps-3 fw-bold">#{{ s.nro_part_ruba }}</td>
+                    {# Suponiendo que 's.activo' es 0 para anulados, o puedes usar 's.estado == "ANULADO"' #}
+                    <tr class="{% if s.activo == 0 %}fila-anulada{% endif %}" style="{% if s.activo == 0 %}display: none; opacity: 0.6; background-color: #f8d7da;{% endif %}">
+                        <td class="ps-3 fw-bold">
+                            #{{ s.nro_part_ruba }}
+                            {% if s.activo == 0 %} <span class="badge bg-danger ms-1">ANULADO</span> {% endif %}
+                        </td>
                         <td>{{ s.fecha }}</td>
                         <td><span class="badge bg-light text-dark border">{{ s.tipo_siniestro }}</span></td>
                         <td>{{ s.lugar if s.lugar else '<span class="text-muted">No especificado</span>' | safe }}</td>
                         <td>
-                            {% if s.estado == 'BORRADOR' %}
+                            {% if s.activo == 0 %}
+                                <span class="badge bg-secondary"><i class="bi bi-x-circle"></i> Anulado</span>
+                            {% elif s.estado == 'BORRADOR' %}
                                 <span class="badge bg-warning text-dark"><i class="bi bi-pencil-square"></i> Borrador</span>
                             {% elif s.estado == 'CALIFICADO' %}
                                 <span class="badge bg-success"><i class="bi bi-check-circle"></i> Calificado</span>
@@ -42,44 +56,49 @@
                                 <span class="badge bg-info">{{ s.estado }}</span>
                             {% endif %}
                         </td>
-                    <td class="text-center">
-                        <div class="btn-group shadow-sm">
-                            <!-- BOTÓN VER -->
-                            <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Detalles">
-                                <i class="bi bi-eye"></i>
-                            </a>
-
-                            <!-- BOTÓN IMPRIMIR -->
-                            <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-outline-danger" target="_blank" title="Imprimir Planilla">
-                                <i class="bi bi-printer-fill"></i>
-                            </a>
-
-                            {# Lógica para ADMIN / ENCARGADOS #}
-                            {% if session.get('rol')|upper in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
-                                
-                                <!-- BOTÓN EDITAR (NUEVO) -->
-                                <a href="{{ url_for('editar_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-warning" title="Editar Siniestro">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-
-                                <!-- BOTÓN CALIFICAR -->
-                                {% if s.estado == 'BORRADOR' %}
-                                    <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
-                                        <i class="bi bi-star-fill"></i>
+                        <td class="text-center">
+                            <div class="btn-group shadow-sm">
+                                {# 1. BOTONES SIEMPRE VISIBLES (Si no está anulado) #}
+                                {% if s.activo != 0 %}
+                                    <a href="{{ url_for('detalle_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Detalles">
+                                        <i class="bi bi-eye"></i>
                                     </a>
+
+                                    <a href="{{ url_for('imprimir_nexo', id=s.id) }}" class="btn btn-sm btn-outline-danger" target="_blank" title="Imprimir Planilla">
+                                        <i class="bi bi-printer-fill"></i>
+                                    </a>
+
+                                    {# 2. BOTONES PARA ADMIN / ENCARGADOS #}
+                                    {% if session.get('rol')|upper in ['ADMIN', 'SUPERVISOR', 'ENCARGADO'] %}
+                                        <a href="{{ url_for('editar_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-warning" title="Editar Siniestro">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+
+                                        {% if s.estado == 'BORRADOR' %}
+                                            <a href="{{ url_for('calificar_salida', id=s.id) }}" class="btn btn-sm btn-info text-white" title="Calificar Personal">
+                                                <i class="bi bi-star-fill"></i>
+                                            </a>
+                                        {% endif %}
+
+                                        {# BOTÓN ANULAR (Reemplaza al eliminar) #}
+                                        <a href="{{ url_for('anular_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-secondary" 
+                                        title="Anular Registro" onclick="return confirm('¿Desea ANULAR el Parte #{{ s.nro_part_ruba }}?');">
+                                            <i class="bi bi-slash-circle"></i>
+                                        </a>
+                                    {% endif %}
+
+                                {% else %}
+                                    {# 3. BOTONES CUANDO ESTÁ ANULADO #}
+                                    {% if session.get('rol')|upper in ['ADMIN', 'SUPERVISOR'] %}
+                                        <a href="{{ url_for('restaurar_siniestro', id=s.id) }}" class="btn btn-sm btn-outline-success" title="Restaurar Registro">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Restaurar
+                                        </a>
+                                    {% else %}
+                                        <span class="badge bg-secondary">ANULADO</span>
+                                    {% endif %}
                                 {% endif %}
-
-                                <!-- BOTÓN ELIMINAR (NUEVO) -->
-                                <form action="{{ url_for('eliminar_siniestro', id=s.id) }}" method="POST" style="display:inline;" 
-                                    onsubmit="return confirm('¿Está seguro de eliminar el Parte RUBA #{{ s.nro_part_ruba }}? Esta acción borrará también el personal asociado.');">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar Permanecientemente">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
-
-                            {% endif %}
-                        </div>
-                    </td>
+                            </div>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
@@ -94,4 +113,14 @@
         </div>
     </div>
 </div>
+<script>
+function toggleAnulados() {
+    const verAnulados = document.getElementById('verAnulados').checked;
+    const filasAnuladas = document.querySelectorAll('.fila-anulada');
+    
+    filasAnuladas.forEach(fila => {
+        fila.style.display = verAnulados ? 'table-row' : 'none';
+    });
+}
+</script>
 {% endblock %}

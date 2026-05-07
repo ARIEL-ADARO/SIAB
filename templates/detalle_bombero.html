@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container-fluid mt-3">
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body bg-light rounded d-flex justify-content-between align-items-center">
+            <div>
+                <a href="{{ url_for('academia_dashboard') }}" class="btn btn-outline-secondary btn-sm mb-2">
+                    <i class="fas fa-arrow-left"></i> Volver 
+                </a>
+                <h2 class="fw-bold text-dark mb-0">{{ bombero.apellido }}, {{ bombero.nombre }}</h2>
+                <span class="badge bg-primary">Legajo: {{ bombero.legajo }}</span>
+                <span class="badge bg-secondary">{{ bombero.grado }}</span>
+            </div>
+            <div class="text-end">
+                <h6 class="text-muted text-uppercase small">Promedio General</h6>
+                <h2 class="fw-bold text-primary">{{ "%.2f"|format(promedio or 0) }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm p-4 h-100">
+                <h6 class="fw-bold text-secondary mb-4"><i class="fas fa-chart-line me-2"></i>Evolución de Calificaciones</h6>
+                <div style="height: 300px;">
+                    <canvas id="chartEvolucion"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold">Desempeño por Materia</div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for t in promedios_temas %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span class="small">{{ t.nombre_tema }}</span>
+                            <span class="badge {% if t.promedio >= 4 %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                {{ "%.1f"|format(t.promedio) }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white fw-bold">Historial Completo de Evaluaciones</div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tema / Clase</th>
+                                <th>Nota</th>
+                                <th>Instructor</th>
+                                <th>Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for h in historial %}
+                            <tr>
+                                <td>{{ h.fecha.strftime('%d/%m/%Y') }}</td>
+                                <td class="fw-bold">{{ h.nombre_tema }}</td>
+                                <td>
+                                    <span class="badge fs-6 {% if h.calificacion >= 4 %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ h.calificacion }}
+                                    </span>
+                                </td>
+                                <td class="small">{{ h.registrado_por }}</td>
+                                <td class="text-muted small italic">{{ h.observacion or '-' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">No hay registros de evaluaciones.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const ctx = document.getElementById('chartEvolucion').getContext('2d');
+        
+        // CORRECCIÓN AQUÍ: Formato de fecha para los labels del gráfico
+        const labels = [{% for h in historial|reverse %}"{{ h.fecha.strftime('%d/%m/%Y') }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+        const data = [{% for h in historial|reverse %}{{ h.calificacion }}{% if not loop.last %}, {% endif %}{% endfor %}];
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Calificación',
+                    data: data,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 5
+                }]
+            },
+            options: {
+                scales: { 
+                    y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    });
+</script>
+{% endblock %}

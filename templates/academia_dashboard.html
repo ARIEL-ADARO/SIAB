@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block contenido %}
+<div class="container-fluid mt-3">
+    <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
+        <div>
+            <h2 class="text-secondary mb-0 fw-bold">
+                <i class="fas fa-chart-line text-primary me-2"></i>Control Académico
+            </h2>
+            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">Gestión de Capacitación 2026</small>
+        </div>
+        <div>
+            <a href="{{ url_for('inicio') }}" class="btn btn-outline-secondary shadow-sm fw-bold px-4">
+                <i class="fas fa-arrow-left me-2"></i>Volver al Panel
+            </a>
+            <span class="badge bg-dark ms-2 py-2">SIAB v3.1</span>
+        </div>        
+        <div>
+            <a href="{{ url_for('asistencia') }}" class="btn btn-success btn-lg shadow-sm fw-bold px-4">
+                <i class="fas fa-plus-circle me-2"></i>Cargar Asistencia y Notas
+            </a>
+            <span class="badge bg-dark ms-2 py-2">SIAB v3.1</span>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-12">
+            <div class="card border-0 shadow-sm" style="background-color: #f8f9fa; border-left: 4px solid #6c757d !important;">
+                <div class="card-body py-2 px-3">
+                    <span class="text-muted small fw-bold text-uppercase">
+                        <i class="fas fa-history me-1"></i> Referencia Histórica (Ciclo 2025)
+                    </span>
+                    <div class="d-flex gap-4 mt-1 flex-wrap">
+                        <div class="d-flex align-items-center">
+                            <span class="small me-2">Promedio 2025:</span>
+                            <span class="fw-bold text-dark">3.85 / 5.0</span>
+                        </div>
+                        <div class="d-flex align-items-center border-start ps-3">
+                            <span class="small me-2">Tendencia Actual:</span>
+                            {% if stats.promedio_cuerpo and stats.promedio_cuerpo >= 3.85 %}
+                                <span class="badge bg-success small"><i class="fas fa-arrow-up"></i> Superior</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark small"><i class="fas fa-arrow-down"></i> En desarrollo</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm bg-primary text-white p-4">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-uppercase opacity-75">Promedio Institucional 2026</h6>
+                        <h1 class="display-4 fw-bold mb-0">{{ "%.2f"|format(stats.promedio_cuerpo or 0) }}</h1>
+                        <small class="opacity-75">Escala de calificación: 1 a 5</small>
+                    </div>
+                    <i class="fas fa-graduation-cap fa-3x opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm bg-dark text-white p-4">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-uppercase opacity-75">Evaluaciones Registradas</h6>
+                        <h1 class="display-4 fw-bold mb-0">{{ stats.total_examenes or 0 }}</h1>
+                        <small class="opacity-75">Total de notas cargadas en el sistema</small>
+                    </div>
+                    <i class="fas fa-file-signature fa-3x opacity-25"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100 p-3">
+                <h6 class="fw-bold text-secondary mb-3">Rendimiento por Temática de Clase</h6>
+                <div style="position: relative; height:300px;">
+                    <canvas id="chartTemas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-trophy text-warning me-2"></i>Cuadro de Honor</h6>
+                </div>
+                <div class="list-group list-group-flush">
+                    {% for b in ranking %}
+                    <a href="{{ url_for('detalle_academico_bombero', legajo=b.legajo) }}" 
+                       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3">
+                        <div>
+                            <div class="fw-bold">{{ b.apellido }}, {{ b.nombre }}</div>
+                            <small class="text-muted">Promedio de {{ b.cantidad_notas }} evaluaciones</small>
+                        </div>
+                        <span class="badge {% if b.promedio_personal >= 4 %}bg-success{% elif b.promedio_personal >= 3 %}bg-warning text-dark{% else %}bg-danger{% endif %} rounded-pill fs-6">
+                            {{ "%.1f"|format(b.promedio_personal) }}
+                        </span>
+                    </a>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">No hay datos de calificaciones aún.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const canvas = document.getElementById('chartTemas');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        
+        const labels = [{% for t in temas %}"{{ t.nombre_tema }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+        const dataValues = [{% for t in temas %}{{ t.promedio_tema }}{% if not loop.last %}, {% endif %}{% endfor %}];
+
+        if (labels.length === 0) {
+            ctx.font = "16px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("Sin datos suficientes para graficar", canvas.width/2, canvas.height/2);
+            return;
+        }
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Promedio (Escala 1-5)',
+                    data: dataValues,
+                    backgroundColor: '#0d6efd',
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                scales: { 
+                    y: { 
+                        beginAtZero: true, 
+                        max: 5, // Ajustado a tu validación de 5 puntos
+                        ticks: { stepSize: 1 }
+                    } 
+                },
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

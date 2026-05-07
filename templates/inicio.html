@@ -49,11 +49,11 @@
     <div class="row g-3">
         <!-- Mi Academia - Corregido para usar session.legajo -->
         <div class="col-12 col-sm-6 col-lg-4">
-            <a href="{{ url_for('ver_academia_bombero', legajo=session.get('legajo')) }}" class="card h-100 shadow-sm bg-primary text-white text-decoration-none border-0 hover-lift">
+            <a href="{{ url_for('academia_dashboard') }}" class="card h-100 shadow-sm bg-primary text-white text-decoration-none border-0 hover-lift">
                 <div class="card-body p-4 text-center text-sm-start">
-                    <i class="fas fa-graduation-cap fa-2x mb-2"></i>
-                    <h5 class="fw-bold">Mi Academia</h5>
-                    <p class="small mb-0 opacity-75">Mis notas y evolución técnica.</p>
+                    <i class="fas fa-university fa-2x mb-2"></i>
+                    <h5 class="fw-bold">Academia</h5>
+                    <p class="small mb-0 opacity-75">Control institucional, estadísticas y rendimiento global.</p>
                 </div>
             </a>
         </div>

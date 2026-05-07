@@ -77,13 +77,13 @@
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold small">Fecha</label>
                                     <input type="date" name="fecha" id="fecha" class="form-control border-danger" 
-                                           value="{{ siniestro.fecha if modo_edicion else '' }}" required>
+                                        value="{{ siniestro.fecha if modo_edicion else fecha_actual }}" required>
                                 </div>
                                     
                                 <div class="col-md-2">
                                     <label class="form-label fw-bold small">Hora Salida</label>
                                     <input type="time" name="hora_salida" id="hora_salida" class="form-control border-danger" 
-                                           value="{{ siniestro.hora_salida if modo_edicion else '' }}" required>
+                                        value="{{ siniestro.hora_salida if modo_edicion else hora_actual }}" required>
                                 </div>
                                 <div class="col-md-7">
                                     <label class="form-label fw-bold small">Intervención de Instituciones</label>
@@ -158,10 +158,20 @@
 
                                                 {# 3. SELECTS CARGADOS CON LOS DATOS DEL PARTICIPANTE #}
                                                 <td>
-                                                    <select name="movil_{{ b.legajo }}" id="movil_{{ b.legajo }}" class="form-select" disabled>
-                                                        <option value="" disabled selected>Móvil...</option>
+                                                    <select name="movil_{{ b.legajo }}" id="movil_{{ b.legajo }}" class="form-select text-center fw-bold" style="width: 90px;" disabled>
+                                                        <option value="" disabled selected>--</option>
+                                                        
+                                                        {# Definimos las unidades de Bomberos Almafuerte #}
                                                         {% for m in ["Móvil 1", "Móvil 43/5", "Propio"] %}
-                                                            <option value="{{ m }}" {% if participante and participante.movil == m %}selected{% endif %}>{{ m }}</option>
+                                                            <option value="{{ m }}" {% if participante and participante.movil == m %}selected{% endif %}>
+                                                                {% if "Móvil" in m %}
+                                                                    {# Esto quita la palabra 'Móvil ' y deja solo el número (ej: 43/5) #}
+                                                                    {{ m.replace('Móvil ', '') }}
+                                                                {% else %}
+                                                                    {# Si es 'Propio', lo dejamos igual #}
+                                                                    {{ m }}
+                                                                {% endif %}
+                                                            </option>
                                                         {% endfor %}
                                                     </select>
                                                 </td>

@@ -1750,10 +1750,9 @@ def listado_siniestros():
     db = get_db()
     cur = db.cursor(dictionary=True)
     
-    # Filtramos para que NO muestre Servicios Especiales ni Capacitaciones
-    # Suponiendo que las capacitaciones tienen un grupo específico o están vacías
+    # Agregamos 'activo' al SELECT para que el HTML pueda leerlo
     cur.execute("""
-        SELECT id, nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado 
+        SELECT id, nro_part_ruba, fecha, hora_salida, tipo_siniestro, lugar, estado, activo 
         FROM nexo_siniestros 
         WHERE grupo_ruba NOT IN ('Servicios Especiales', 'Capacitaciones', '') 
         ORDER BY id DESC
@@ -2105,10 +2104,10 @@ def nueva_planilla_nexo():
     
     cur.close()
     return render_template('nexo_form.html', 
-                           bomberos=res_bomberos, 
-                           tipos_siniestros=res_tipos,
-                           fecha_hoy=fecha_hoy, 
-                           hora_hoy=hora_hoy)
+                                bomberos=res_bomberos, 
+                                tipos_siniestros=res_tipos,
+                                fecha_actual=fecha_hoy, # Cambiado de fecha_hoy a fecha_actual
+                                hora_actual=hora_hoy)   # Cambiado de hora_hoy a hora_actual
 
 @app.route('/registro-salidas/eliminar/<int:id>', methods=['POST'])
 @login_requerido
@@ -2177,6 +2176,37 @@ def editar_siniestro(id):
                            personal_cargado=personal_asistente, 
                            bomberos=lista_todos_bomberos,
                            modo_edicion=True)
+
+@app.route('/siniestro/anular/<int:id>')
+@login_requerido
+def anular_siniestro(id):
+    db = get_db()
+    cur = db.cursor()
+    try:
+        # Usamos SQL puro como en tu función de actualizar
+        cur.execute("UPDATE nexo_siniestros SET activo = 0 WHERE id = %s", (id,))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error al anular: {e}")
+    finally:
+        cur.close()
+    return redirect(url_for('listado_siniestros'))
+
+@app.route('/siniestro/restaurar/<int:id>')
+@login_requerido
+def restaurar_siniestro(id):
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("UPDATE nexo_siniestros SET activo = 1 WHERE id = %s", (id,))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error al restaurar: {e}")
+    finally:
+        cur.close()
+    return redirect(url_for('listado_siniestros'))
 
 @app.route('/registro-salidas/actualizar/<int:id>', methods=['POST'])
 @login_requerido
@@ -2476,6 +2506,114 @@ def ejecutar_backup():
 # ============================================================
 # ACADEMIA BOMBERO
 # ============================================================
+
+@app.route("/academia/dashboard")
+@login_requerido
+def academia_dashboard():
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        # 1. KPIs: Usamos la tabla 'asistencia' que es donde guardas la nota
+        # Filtramos donde calificacion NO sea NULL para tener promedios reales
+        cur.execute("""
+            SELECT 
+                AVG(calificacion) as promedio_cuerpo,
+                COUNT(calificacion) as total_examenes
+            FROM asistencia 
+            WHERE calificacion IS NOT NULL
+        """)
+        stats = cur.fetchone()
+
+        # 2. Ranking de Bomberos (Top 10)
+        cur.execute("""
+            SELECT l.legajo, l.nombre, l.apellido, 
+                   AVG(a.calificacion) as promedio_personal,
+                   COUNT(a.calificacion) as cantidad_notas
+            FROM asistencia a
+            JOIN legajos l ON a.legajo = l.legajo
+            WHERE a.calificacion IS NOT NULL
+            GROUP BY l.legajo, l.nombre, l.apellido
+            ORDER BY promedio_personal DESC
+            LIMIT 10
+        """)
+        ranking = cur.fetchall()
+
+        # 3. Rendimiento por Tema (Usando 'evento_temas' que ya usas en tu carga)
+        # Nota: Como 'asistencia' no tiene 'tema_id' directo, 
+        # vinculamos a través del evento_id para ver el rendimiento general del evento
+        cur.execute("""
+            SELECT e.descripcion as nombre_tema, AVG(a.calificacion) as promedio_tema
+            FROM asistencia a
+            JOIN eventos e ON a.evento_id = e.id
+            WHERE a.calificacion IS NOT NULL AND e.tipo = 'CAPACITACION'
+            GROUP BY e.descripcion
+            ORDER BY promedio_tema DESC
+        """)
+        datos_temas = cur.fetchall()
+
+        return render_template("academia_dashboard.html", 
+                               stats=stats, 
+                               ranking=ranking, 
+                               temas=datos_temas)
+    finally:
+        conn.close()
+
+@app.route("/academia/bombero/<int:legajo>")
+@login_requerido
+@rol_requerido('ADMIN', 'JEFATURA')
+def detalle_academico_bombero(legajo):
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # 1. Datos básicos del bombero
+    cur.execute("SELECT legajo, nombre, apellido, grado FROM legajos WHERE legajo = %s", (legajo,))
+    bombero = cur.fetchone()
+
+    if not bombero:
+        flash("Bombero no encontrado", "danger")
+        return redirect(url_for('academia_dashboard'))
+
+    # 2. Promedio General del Bombero
+    cur.execute("SELECT AVG(calificacion) as promedio FROM asistencia WHERE legajo = %s AND calificacion IS NOT NULL", (legajo,))
+    resumen = cur.fetchone()
+    promedio = resumen['promedio'] or 0
+
+    # 3. Historial detallado de todas sus notas
+    # Dentro de detalle_academico_bombero en app.py
+    cur.execute("""
+        SELECT 
+            a.calificacion, 
+            a.observacion, 
+            e.fecha,  -- Traemos el objeto fecha puro
+            e.descripcion as nombre_tema,
+            u.username as registrado_por
+        FROM asistencia a
+        JOIN eventos e ON a.evento_id = e.id
+        LEFT JOIN usuarios u ON a.registrado_por = u.id
+        WHERE a.legajo = %s AND a.calificacion IS NOT NULL
+        ORDER BY e.fecha DESC
+    """, (legajo,))
+    historial = cur.fetchall()
+
+    # 4. Promedios por tipo de capacitación (para ver en qué es mejor)
+    cur.execute("""
+        SELECT e.descripcion as nombre_tema, AVG(a.calificacion) as promedio
+        FROM asistencia a
+        JOIN eventos e ON a.evento_id = e.id
+        WHERE a.legajo = %s AND a.calificacion IS NOT NULL
+        GROUP BY e.descripcion
+        ORDER BY promedio DESC
+    """, (legajo,))
+    promedios_temas = cur.fetchall()
+
+    conn.close()
+    
+    return render_template("detalle_bombero.html", 
+                           bombero=bombero, 
+                           promedio=promedio, 
+                           historial=historial, 
+                           promedios_temas=promedios_temas)
 
 @app.route("/academia/bombero/<int:legajo>")
 @login_requerido
