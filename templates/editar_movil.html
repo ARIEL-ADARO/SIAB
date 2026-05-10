@@ -3,7 +3,7 @@
 <div class="container mt-4 mb-5">
     <div class="card shadow">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <h4 class="mb-0"><i class="fas fa-edit"></i> Ficha Integral: Móvil {{ movil.nro_unidad }}</h4>
+            <h4 class="mb-0"><i class="fas fa-edit"></i> Legajo: Móvil {{ movil.nro_movil }}</h4>
             <span class="badge bg-danger">Perfil Supervisor</span>
         </div>
         <form method="POST" class="card-body">
@@ -12,9 +12,9 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <label class="form-label">Número de Móvil</label>
-                    <input type="text" name="nro_unidad" class="form-control" value="{{ movil.nro_unidad }}" required>
+                    <input type="text" name="nro_unidad" class="form-control" value="{{ movil.nro_movil }}" required>
                     <label class="form-label">KM Iniciales (Compra)</label>
-                    <input type="number" name="km_inicial" class="form-control" value="{{ movil.km_inicial }}" placeholder="Km al recibirlo">
+                    <input type="number" name="km_inicial" class="form-control" value="{{ movil.km_actual }}" placeholder="Km al recibirlo">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Dominio (Patente)</label>
@@ -27,9 +27,9 @@
                 <div class="col-md-4">
                     <label class="form-label">Estado del Móvil</label>
                     <select name="estado" class="form-select">
-                        <option value="ACTIVO" {% if movil.estado == 'ACTIVO' %}selected{% endif %}>ACTIVO (En Servicio)</option>
-                        <option value="REPARACION" {% if movil.estado == 'REPARACION' %}selected{% endif %}>REPARACIÓN (Fuera de Servicio)</option>
-                        <option value="HISTORICO" {% if movil.estado == 'HISTORICO' %}selected{% endif %}>HISTÓRICO (Baja del Cuartel)</option>
+                        <option value="ACTIVO" {% if movil.estado_operativo == 'ACTIVO' %}selected{% endif %}>ACTIVO</option>
+                        <option value="REPARACION" {% if movil.estado_operativo == 'REPARACION' %}selected{% endif %}>REPARACIÓN (Fuera de Servicio)</option>
+                        <option value="HISTORICO" {% if movil.estado_operativo == 'HISTORICO' %}selected{% endif %}>HISTÓRICO (Baja del Cuartel)</option>
                     </select>
                 </div>
             </div>
@@ -64,7 +64,7 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Año</label>
-                    <input type="number" name="anio" class="form-control" value="{{ movil.anio }}">
+                    <input type="number" name="anio" class="form-control" value="{{ movil.anio_fabricacion }}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Lugar de Origen</label>
@@ -77,7 +77,7 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <label class="form-label">Agua (Litros)</label>
-                    <input type="number" name="capacidad_agua" class="form-control" value="{{ movil.capacidad_agua }}">
+                    <input type="number" name="capacidad_agua" class="form-control" value="{{ movil.capacidad_valor }}">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Vencimiento ITV/VTV</label>
@@ -96,7 +96,7 @@
             <div class="mt-4 border-top pt-3 d-flex justify-content-between">
                 <div>
                     <a href="/moviles" class="btn btn-secondary me-2">Cancelar</a>
-                    <button type="submit" class="btn btn-danger px-5">Actualizar Ficha Completa</button>
+                    <button type="submit" class="btn btn-danger px-5">Actualizar Legajo</button>
                 </div>
             </div>
         </form>

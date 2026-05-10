@@ -2,62 +2,82 @@
 
 {% block contenido %}
 <div class="container mt-4">
-    <!-- Encabezado con Identidad del Móvil -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-start mb-4">
         <div>
-            <h2 class="mb-0">Unidad #{{ movil.nro_unidad }}</h2>
-            <p class="text-muted fs-5"><em>"{{ movil.nombre_homenaje or 'Sin nombre de homenaje' }}"</em></p>
+            <h1 class="display-5 mb-0">Móvil #{{ movil.nro_movil }}</h1>
+            <p class="text-muted fs-5">
+                <span class="badge bg-danger">{{ movil.tipo_uso }}</span> | 
+                <strong>{{ movil.marca }} {{ movil.modelo }}</strong> 
+                {% if movil.dominio %} <span class="badge bg-light text-dark border">{{ movil.dominio }}</span> {% endif %}
+            </p>
         </div>
-        <div class="btn-group">
+        <div class="btn-group shadow-sm">
             <a href="{{ url_for('gestion_moviles') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-arrow-left"></i> Volver
             </a>
-            <a href="{{ url_for('editar_movil', id=movil.id) }}" class="btn btn-warning text-white">
-                <i class="fas fa-edit"></i> Editar Datos
+            
+            <a href="{{ url_for('editar_movil', id=movil.id_movil) }}" class="btn btn-warning">
+                <i class="fas fa-edit"></i> Editar Legajo
             </a>
-            <!-- Botón para ir directo a cargar un nuevo mantenimiento -->
-            <a href="{{ url_for('nuevo_mantenimiento_especifico', id=movil.id) }}" class="btn btn-success">
-                <i class="fas fa-plus-circle me-1"></i> Cargar Mantenimiento
-            </a>            
+            
+            <a href="{{ url_for('nuevo_mantenimiento_especifico', id=movil.id_movil) }}" class="btn btn-success">
+                <i class="fas fa-tools"></i> Cargar Mantenimiento
+            </a>
         </div>
     </div>
 
-    <!-- Navegación por Pestañas -->
-    <!-- Navegación por Pestañas (Mantenimiento como Principal) -->
-    <ul class="nav nav-tabs shadow-sm" id="fichaTab" role="tablist">
+    <ul class="nav nav-pills mb-3 shadow-sm p-2 bg-white rounded" id="fichaTab" role="tablist">
         <li class="nav-item">
-            <button class="nav-link active" id="mantenimiento-tab" data-bs-toggle="tab" data-bs-target="#mantenimiento" type="button">
-                <i class="fas fa-tools me-2"></i>Ficha de Mantenimiento
+            <button class="nav-link active text-uppercase fw-bold" id="mantenimiento-tab" data-bs-toggle="tab" data-bs-target="#mantenimiento" type="button">
+                <i class="fas fa-wrench me-2"></i>Mantenimiento
             </button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="historia-tab" data-bs-toggle="tab" data-bs-target="#historia" type="button">
-                <i class="fas fa-landmark me-2"></i>Historia Patrimonial
+            <button class="nav-link text-uppercase fw-bold" id="historia-tab" data-bs-toggle="tab" data-bs-target="#historia" type="button">
+                <i class="fas fa-file-invoice-dollar me-2"></i>Patrimonio y Origen
             </button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="operativo-tab" data-bs-toggle="tab" data-bs-target="#operativo" type="button">
-                <i class="fas fa-fire-extinguisher me-2"></i>Registro Operativo
+            <button class="nav-link text-uppercase fw-bold" id="operativo-tab" data-bs-toggle="tab" data-bs-target="#operativo" type="button">
+                <i class="fas fa-route me-2"></i>Historial Salidas
             </button>
         </li>
     </ul>
 
-    <div class="tab-content border border-top-0 p-4 bg-white shadow-sm rounded-bottom" id="fichaTabContent">
+    <div class="tab-content bg-white p-4 shadow-sm rounded border" id="fichaTabContent">
         
-        <!-- PESTAÑA 1: MANTENIMIENTO (Ahora es la activa por defecto) -->
         <div class="tab-pane fade show active" id="mantenimiento">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5>Historial de Intervenciones Técnicas</h5>
-                <span class="badge bg-dark fs-6">Kilometraje Actual: {{ movil.km_inicial or 0 }} km</span>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted text-uppercase small">Kilometraje Actual</h6>
+                            <h3 class="mb-0">{{ "{:,}".format(movil.km_actual or 0) }} KM</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted text-uppercase small">Estado Operativo</h6>
+                            <span class="badge {% if movil.estado_operativo == 'EN SERVICIO' %}bg-success{% else %}bg-danger{% endif %} fs-6">
+                                {{ movil.estado_operativo }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+            <h5>Historial de Intervenciones</h5>
             <div class="table-responsive">
-                <table class="table table-striped align-middle">
-                    <thead class="table-light">
+                <table class="table table-hover">
+                    <thead class="table-dark">
                         <tr>
                             <th>Fecha</th>
                             <th>Tipo</th>
-                            <th>Descripción</th>
+                            <th>Descripción / Taller</th>
                             <th>KM</th>
+                            <th class="text-end">Costo</th>
                             <th class="text-end">Acciones</th>
                         </tr>
                     </thead>
@@ -66,19 +86,14 @@
                         <tr>
                             <td>{{ reg.fecha_reparacion }}</td>
                             <td><span class="badge bg-info text-dark">{{ reg.tipo_mantenimiento }}</span></td>
-                            <td>{{ reg.descripcion }}</td>
-                            <td>{{ reg.km_unidad }}</td>
+                            <td>
+                                <strong>{{ reg.descripcion }}</strong><br>
+                                <small class="text-muted">Prov: {{ reg.proveedor or 'No especificado' }}</small>
+                            </td>
+                            <td>{{ "{:,}".format(reg.km_unidad) }}</td>
+                            <td class="text-end text-success fw-bold">${{ "{:,.2f}".format(reg.importe_total or 0) }}</td>
                             <td class="text-end">
-                                <div class="btn-group">
-                                    <a href="{{ url_for('editar_mantenimiento', id_reg=reg.id) }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-pen"></i>
-                                    </a>
-                                    <a href="{{ url_for('eliminar_mantenimiento', id_reg=reg.id) }}" 
-                                    class="btn btn-sm btn-outline-danger" 
-                                    onclick="return confirm('¿Eliminar registro?')">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
-                                </div>
+                                <a href="{{ url_for('editar_mantenimiento', id_reg=reg.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -87,71 +102,115 @@
             </div>
         </div>
 
-        <!-- PESTAÑA 2: HISTORIA (PATRIMONIO) -->
-        <div class="tab-pane fade" id="historia"> 
-            <!-- Aquí adentro pegas lo que me pasaste -->
-            <div class="row mt-3"> 
+        <div class="tab-pane fade" id="historia">
+            <div class="row">
                 <div class="col-md-6">
-                    <h5 class="text-primary border-bottom pb-2">Identidad y Origen</h5>
-                    <table class="table table-borderless">
-                        <tr><th>Marca / Modelo:</th><td>{{ movil.marca }} {{ movil.modelo }}</td></tr>
-                        <tr><th>Año de Fab.:</th><td>{{ movil.anio }}</td></tr>
-                        <tr><th>Tipo de Unidad:</th><td>{{ movil.tipo }}</td></tr>
-                        <tr><th>Fecha Adquisición:</th><td>{{ movil.fecha_adquisicion or 'No registrada' }}</td></tr>
-                        <tr><th>Proveedor Compra:</th><td>{{ movil.proveedor_compra or 'Desconocido' }}</td></tr>
-                        <tr><th>Importe Compra:</th><td>${{ "{:,.2f}".format(movil.importe_compra or 0) }}</td></tr>
+                    <h5 class="text-danger border-bottom pb-2 mb-3">Datos de Adquisición</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Origen:</strong> <span>{{ movil.lugar_origen or 'No cargado' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Proveedor:</strong> <span>{{ movil.proveedor_nombre or 'Laurentti' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Fecha Compra:</strong> <span>{{ movil.fecha_adquisicion or '---' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between text-success fw-bold">
+                            <strong>Precio:</strong> <span>{{ movil.moneda_compra or '$' }} {{ "{:,.2f}".format(movil.precio_compra or 0) }}</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h5 class="text-danger border-bottom pb-2 mb-3">Especificaciones Técnicas</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Nro Chasis:</strong> <span>{{ movil.nro_chasis or '---' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Nro Motor:</strong> <span>{{ movil.nro_motor or '---' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Capacidad:</strong> <span>{{ movil.capacidad_valor or '0' }} Lts.</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Año Fáb.:</strong> <span>{{ movil.anio_fabricacion or '---' }}</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="mt-4">
+                <h5 class="text-secondary border-bottom pb-2 mb-3">Historia de este Móvil</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-borderless">
+                        <thead class="text-muted small">
+                            <tr>
+                                <th>Fecha Cambio</th>
+                                <th>Unidad Anterior</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in cambios %}
+                            <tr>
+                                <td><small>{{ c.fecha_cambio.strftime('%d/%m/%Y') }}</small></td>
+                                <td><strong>{{ c.marca_anterior }} {{ c.modelo_anterior }}</strong></td>
+                                <td><span class="badge bg-light text-dark border">Reemplazo</span></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-muted small">Esta es la unidad original registrada para este móvil.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
                     </table>
                 </div>
-                <div class="col-md-6">
-                    <h5 class="text-danger border-bottom pb-2">Estado de Baja / Venta</h5>
-                    {% if movil.estado in ['HISTORICO', 'BAJA'] %}
-                        <table class="table table-borderless">
-                            <tr><th>Fecha de Baja:</th><td>{{ movil.fecha_baja }}</td></tr>
-                            <tr><th>Destino / Comprador:</th><td>{{ movil.destino_baja }}</td></tr>
-                            <tr><th>Importe Venta:</th><td>${{ "{:,.2f}".format(movil.importe_venta or 0) }}</td></tr>
-                        </table>
-                    {% else %}
-                        <div class="alert alert-success mt-2">
-                            <i class="fas fa-check-circle"></i> Esta unidad se encuentra actualmente en la flota activa.
+            </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="operativo">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card border-0 bg-dark text-white shadow-sm">
+                        <div class="card-body d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <h6 class="text-uppercase small mb-1">Total de Intervenciones</h6>
+                                <h2 class="mb-0">{{ total_intervenciones }}</h2>
+                            </div>
+                            <i class="fas fa-fire-extinguisher fa-2x opacity-50"></i>
                         </div>
-                    {% endif %}
+                    </div>
                 </div>
             </div>
-        </div> <!-- Este cierre de DIV es fundamental -->
 
-        <!-- PESTAÑA 3: REGISTRO OPERATIVO (SINIESTROS) -->
-        <div class="tab-pane fade" id="operativo">
-            <h5 class="mb-3 text-danger"><i class="fas fa-fire-extinguisher me-2"></i>Historial de Salidas a Servicio</h5>
+            <h5 class="mb-3 text-danger"><i class="fas fa-list me-2"></i>Historial de Salidas</h5>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Nro Parte (RUBA)</th>
+                    <thead>
+                        <tr class="table-secondary">
+                            <th>Parte RUBA</th>
                             <th>Fecha</th>
                             <th>Tipo de Siniestro</th>
-                            <th>Lugar / Dirección</th>
+                            <th>Lugar de Intervención</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for s in salidas %}
                         <tr>
-                            <td><span class="badge bg-secondary">#{{ s.nro_part_ruba }}</span></td>
+                            <td><span class="badge bg-dark">#{{ s.nro_part_ruba }}</span></td>
                             <td>{{ s.fecha }}</td>
                             <td><strong>{{ s.tipo_siniestro }}</strong></td>
                             <td>{{ s.lugar }}</td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="4" class="text-center py-4 text-muted">
-                                <i class="fas fa-info-circle me-1"></i> No se registran participaciones operativas para esta unidad.
-                            </td>
+                            <td colspan="4" class="text-center py-4 text-muted">No se registran salidas para este número de móvil.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-
     </div>
 </div>
 {% endblock %}

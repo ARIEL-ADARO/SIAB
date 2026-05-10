@@ -514,6 +514,7 @@ def editar_borrador(evento_id):
     return render_template("asistencia.html",
                            evento=evento,
                            postas_previas=postas_previas, # <--- Pasamos las postas al HTML
+                           legajo_actual=legajo_usuario_actual,
                            asistencias_previas=dict_asistencias,
                            conceptos=conceptos,
                            departamentos=departamentos,
@@ -1936,9 +1937,6 @@ def ver_actividades():
 from datetime import datetime, date
 import calendar
 
-from datetime import datetime, date
-import calendar
-
 @app.route("/mis-capacitaciones")
 @login_requerido
 def mis_capacitaciones():
@@ -2916,72 +2914,96 @@ def ver_gestion_cargos():
 
 @app.route("/moviles")
 @login_requerido
-@requerir_permiso('es_encargado_moviles')
 def gestion_moviles():
-    # Eliminamos el check de 'moviles' si ya usas 'es_encargado_moviles' en el decorador
-    
     db = get_db()
-    # Usamos dictionary=True para que en el HTML podamos usar m['nombre']
     cursor = db.cursor(dictionary=True)
     
-    # Traemos todos los móviles de la tabla
-    cursor.execute("SELECT * FROM moviles")
-    todos_los_moviles = cursor.fetchall()
+    # Traemos todos los móviles con sus unidades físicas
+    query = """
+        SELECT m.*, u.marca, u.modelo, u.dominio, u.km_actual 
+        FROM moviles m
+        JOIN unidades_fisicas u ON m.id_unidad_actual = u.id_unidad
+        ORDER BY m.nro_movil ASC
+    """
+    cursor.execute(query)
+    todos = cursor.fetchall()
+    
+    # Separamos por estado operativo
+    activos = [m for m in todos if m['estado_operativo'] in ['ACTIVO', 'EN SERVICIO']]
+    historicos = [m for m in todos if m['estado_operativo'] == 'HISTORICO']
+    
     db.close()
-    
-    # Separamos las listas según el estado
-    activos = [m for m in todos_los_moviles if m['estado'] in ['ACTIVO', 'REPARACION']]
-    historicos = [m for m in todos_los_moviles if m['estado'] in ['HISTORICO', 'BAJA']]
-    
     return render_template('gestion_moviles.html', 
                            moviles=activos, 
                            moviles_historicos=historicos)
 
 @app.route("/moviles/crear", methods=["POST"])
 @login_requerido
-@rol_requerido('ADMIN', 'JEFATURA')
 def crear_movil():
-    if request.method == "POST":
-        # Captura de datos del formulario
-        datos = (
-            request.form.get("nro_unidad"),
-            request.form.get("dominio"),
-            request.form.get("anio"),
-            request.form.get("nombre_homenaje"),
+    # 1. El número que viene del formulario lo usaremos para la tabla 'moviles'
+    nro_para_el_movil = request.form.get("nro_unidad") 
+    
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    try:
+        # 2. Insertar en UNIDADES_FISICAS
+        # Quitamos 'nro_unidad' de aquí porque no existe en tu tabla física
+        sql_u = """
+            INSERT INTO unidades_fisicas 
+            (marca, modelo, anio_fabricacion, dominio, capacidad_valor, km_actual, lugar_origen) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql_u, (
             request.form.get("marca"),
             request.form.get("modelo"),
-            request.form.get("tipo"),
-            request.form.get("lugar_origen"),
-            request.form.get("proveedor"),
-            request.form.get("capacidad_agua"),
-            request.form.get("tiene_espuma"),
-            request.form.get("capacidad_personas"),
-            request.form.get("fecha_vtv") or None, # Manejo de fechas vacías
-            request.form.get("fecha_compra") or None,
-            request.form.get("trailer_dominio"),
-            request.form.get("trailer_ejes")
-        )
+            request.form.get("anio") or None,
+            request.form.get("dominio"),
+            request.form.get("capacidad_agua") or 0,
+            request.form.get("km_inicial") or 0,
+            request.form.get("lugar_origen")
+        ))
+        nueva_id_fisica = cursor.lastrowid
 
-        conn = get_db()
-        cur = conn.cursor()
-        
-        sql = """INSERT INTO unidades_fisicas 
-                 (nro_unidad, dominio, anio, nombre_homenaje, marca, modelo, tipo, 
-                  lugar_origen, proveedor, capacidad_agua, tiene_espuma, 
-                  capacidad_personas, fecha_vtv, fecha_compra, trailer_dominio, trailer_ejes) 
-                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-        
-        try:
-            cur.execute(sql, datos)
-            conn.commit()
-            flash("Nueva unidad registrada exitosamente en el historial.", "success")
-        except Exception as e:
-            conn.rollback()
-            flash(f"Error al registrar: {str(e)}", "danger")
-        finally:
-            conn.close()
+        # 3. Vincular con la tabla MOVILES
+        # Buscamos si el móvil (ej: el 1) ya existe
+        cursor.execute("SELECT id_movil FROM moviles WHERE nro_movil = %s", (nro_para_el_movil,))
+        existe = cursor.fetchone()
 
-        return redirect(url_for('gestion_moviles')) # O como se llame tu ruta de listado
+        if existe:
+            # SI EXISTE: Lo actualizamos (Pasa de HISTORICO a ACTIVO con la nueva unidad física)
+            sql_m = """
+                UPDATE moviles 
+                SET id_unidad_actual = %s, estado_operativo = 'ACTIVO', tipo_uso = %s, nombre_homenaje = %s
+                WHERE nro_movil = %s
+            """
+            cursor.execute(sql_m, (
+                nueva_id_fisica, 
+                request.form.get("tipo"), 
+                request.form.get("nombre_homenaje"), 
+                nro_para_el_movil
+            ))
+        else:
+            # SI NO EXISTE: Creamos el registro nuevo
+            sql_m = """
+                INSERT INTO moviles (nro_movil, id_unidad_actual, tipo_uso, estado_operativo, nombre_homenaje)
+                VALUES (%s, %s, %s, 'ACTIVO', %s)
+            """
+            cursor.execute(sql_m, (
+                nro_para_el_movil, nueva_id_fisica, request.form.get("tipo"), request.form.get("nombre_homenaje")
+            ))
+
+        db.commit()
+        flash(f"Unidad {nro_para_el_movil} procesada correctamente.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"ERROR SIAB CRÍTICO: {e}") # Esto te dirá si falta otra columna
+        flash(f"Error: {str(e)}", "danger")
+    finally:
+        db.close()
+
+    return redirect(url_for('gestion_moviles'))
 
 @app.route('/moviles/editar/<int:id>', methods=['GET', 'POST'])
 @login_requerido
@@ -2989,68 +3011,126 @@ def crear_movil():
 def editar_movil(id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
-    km_ini = request.form.get('km_inicial') or 0
 
     if request.method == 'POST':
-        # Captura masiva de datos para supervisores
-        query = """
-            UPDATE moviles SET 
-                nro_unidad=%s, dominio=%s, nombre_homenaje=%s, marca=%s, modelo=%s, 
-                anio=%s, tipo=%s, lugar_origen=%s, proveedor=%s, capacidad_agua=%s, 
-                tiene_espuma=%s, capacidad_personas=%s, fecha_vtv=%s, fecha_compra=%s, 
-                trailer_dominio=%s, trailer_ejes=%s, estado=%s, km_inicial=%s
-            WHERE id=%s
-        """
-        valores = (
-            request.form.get('nro_unidad'), request.form.get('dominio'), 
-            request.form.get('nombre_homenaje'), request.form.get('marca'), 
-            request.form.get('modelo'), request.form.get('anio') or None, 
-            request.form.get('tipo'), request.form.get('lugar_origen'), 
-            request.form.get('proveedor'), request.form.get('capacidad_agua') or 0, 
-            request.form.get('tiene_espuma'), request.form.get('capacidad_personas') or 0, 
-            request.form.get('fecha_vtv') or None, request.form.get('fecha_compra') or None, 
-            request.form.get('trailer_dominio'), request.form.get('trailer_ejes') or 0, 
-            request.form.get('estado'), id
-        )
+        # Capturamos los datos del formulario
+        nro_unidad_form = request.form.get('nro_unidad')
+        estado_form = request.form.get('estado')
         
-        cursor.execute(query, valores)
+        # DEBUG: Esto imprimirá en tu consola negra qué está llegando realmente
+        print(f"DEBUG: Recibido nro_unidad={nro_unidad_form}, estado={estado_form}")
+
+        # 1. Actualizar tabla MOVILES
+        query_moviles = """
+            UPDATE moviles SET 
+                nro_movil=%s, 
+                nombre_homenaje=%s, 
+                estado_operativo=%s
+            WHERE id_movil=%s
+        """
+        # Si el nro_unidad llega vacío desde el HTML, evitamos que se guarde como None
+        cursor.execute(query_moviles, (
+            nro_unidad_form if nro_unidad_form else "0", 
+            request.form.get('nombre_homenaje'), 
+            estado_form, 
+            id
+        ))
+
+        # 2. Actualizar tabla UNIDADES_FISICAS
+        query_unidades = """
+            UPDATE unidades_fisicas SET 
+                dominio=%s, marca=%s, modelo=%s, anio_fabricacion=%s, 
+                lugar_origen=%s, capacidad_valor=%s, km_actual=%s,
+                nro_chasis=%s, nro_motor=%s
+            WHERE id_unidad = (SELECT id_unidad_actual FROM moviles WHERE id_movil=%s)
+        """
+        cursor.execute(query_unidades, (
+            request.form.get('dominio'), 
+            request.form.get('marca'),
+            request.form.get('modelo'), 
+            request.form.get('anio') or None,
+            request.form.get('lugar_origen'), 
+            request.form.get('capacidad_agua') or 0,
+            request.form.get('km_inicial') or 0,
+            request.form.get('nro_chasis'),
+            request.form.get('nro_motor'),
+            id
+        ))
+        
         db.commit()
         db.close()
+        flash("Ficha actualizada correctamente", "success")
         return redirect(url_for('gestion_moviles'))
 
-    cursor.execute("SELECT * FROM moviles WHERE id = %s", (id,))
+    # --- MÉTODO GET (Para cargar los datos) ---
+    cursor.execute("""
+        SELECT m.*, u.* FROM moviles m
+        LEFT JOIN unidades_fisicas u ON m.id_unidad_actual = u.id_unidad
+        WHERE m.id_movil = %s
+    """, (id,))
     movil = cursor.fetchone()
     db.close()
+    
     return render_template('editar_movil.html', movil=movil)
 
 @app.route('/moviles/mantenimiento/registrar/<int:id_movil>', methods=['POST'])
 @login_requerido
-@requerir_permiso('es_encargado_moviles')
 def registrar_mantenimiento(id_movil):
-    if request.method == 'POST':
-        fecha = request.form.get('fecha')
-        tipo = request.form.get('tipo')
-        desc = request.form.get('descripcion')
-        prov = request.form.get('proveedor')
-        km = request.form.get('km') or 0
-        importe = request.form.get('importe') or 0
-        proximo = request.form.get('proximo_vence') or None
-        obs = request.form.get('observaciones')
+    # 1. Captura de datos (Sincronizado con tu HTML)
+    fecha = request.form.get('fecha')
+    km = request.form.get('km') or 0
+    tipo = request.form.get('tipo')
+    desc = request.form.get('descripcion')
+    prov = request.form.get('proveedor')
+    importe = request.form.get('importe') or 0
+    # Agregamos este que está en tu HTML:
+    vence = request.form.get('proximo_vence') or None 
+    obs = request.form.get('observaciones')
 
-        db = get_db()
-        cursor = db.cursor()
-        # 1. Insertamos el historial
-        query = """INSERT INTO historial_mantenimiento 
-                (id_movil, fecha_reparacion, tipo_mantenimiento, descripcion, 
-                    proveedor, km_unidad, importe_total, fecha_proximo_mantenimiento, observaciones) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-        cursor.execute(query, (id_movil, fecha, tipo, desc, prov, km, importe, proximo, obs))
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    try:
+        # 2. Obtenemos la unidad física
+        cursor.execute("SELECT id_unidad_actual FROM moviles WHERE id_movil = %s", (id_movil,))
+        movil = cursor.fetchone()
         
-        # 2. AGREGADO: Actualizamos el KM en la tabla principal del móvil
-        cursor.execute("UPDATE moviles SET km_inicial = %s WHERE id = %s", (km, id_movil))
+        if not movil:
+            flash("Móvil no encontrado", "danger")
+            return redirect(url_for('gestion_moviles'))
+
+        id_u = movil['id_unidad_actual']
+
+        # 3. INSERT (Asegúrate que estas columnas existan en tu tabla historial_mantenimiento)
+        # Si 'proximo_vence' no existe en tu DB, quitalo de aquí y del VALUES
+        sql_historial = """
+            INSERT INTO historial_mantenimiento 
+            (id_movil, fecha_reparacion, tipo_mantenimiento, descripcion, 
+             proveedor, km_unidad, importe_total, observaciones) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql_historial, (
+            id_movil, fecha, tipo, desc, prov, km, importe, obs
+        ))
+        
+        # 4. Actualización de KM en la unidad física
+        if id_u:
+            cursor.execute("""
+                UPDATE unidades_fisicas SET km_actual = %s 
+                WHERE id_unidad = %s AND km_actual < %s
+            """, (km, id_u, km))
+        
         db.commit()
+        flash("Mantenimiento guardado correctamente.", "success")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error Grave SIAB: {e}") # Mirá esto en la consola negra
+        flash(f"Error al guardar: {str(e)}", "danger")
+    finally:
         db.close()
-        return redirect(url_for('ficha_integral_movil', id=id_movil))
+
+    return redirect(url_for('ficha_integral_movil', id=id_movil))
 
 @app.route('/mantenimiento/actualizar/<int:id_reg>', methods=['POST'])
 @login_requerido  # Usando tu decorador correcto
@@ -3123,68 +3203,114 @@ def editar_mantenimiento(id_reg):
 
 @app.route("/moviles/historial/<int:id>")
 @login_requerido
-@requerir_permiso('es_encargado_moviles')
 def historial_movil(id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
-    # Obtenemos los datos del móvil para el encabezado
-    cursor.execute("SELECT nro_unidad, marca, modelo FROM moviles WHERE id = %s", (id,))
+    # 1. Obtenemos datos del móvil actual uniendo con la unidad física
+    # Ajustado a tus columnas reales: nro_movil, marca, modelo
+    cursor.execute("""
+        SELECT m.nro_movil, u.marca, u.modelo 
+        FROM moviles m
+        JOIN unidades_fisicas u ON m.id_unidad_actual = u.id_unidad
+        WHERE m.id_movil = %s
+    """, (id,))
     movil = cursor.fetchone()
     
-    # Obtenemos todo el historial de reparaciones y servicios
+    # 2. Obtenemos el historial de reparaciones
     cursor.execute("""
-        SELECT * FROM historial_mantenimiento 
+        SELECT fecha_reparacion, tipo_mantenimiento, descripcion, km_unidad, importe_total 
+        FROM historial_mantenimiento 
         WHERE id_movil = %s 
         ORDER BY fecha_reparacion DESC
     """, (id,))
     historial = cursor.fetchall()
     
+    # 3. (OPCIONAL) Obtenemos el historial de qué camiones hubo antes en este móvil
+    cursor.execute("""
+        SELECT h.fecha_cambio, u_vieja.marca as marca_anterior, u_vieja.modelo as modelo_anterior
+        FROM historial_cambios_unidad h
+        JOIN unidades_fisicas u_vieja ON h.id_unidad_saliente = u_vieja.id_unidad
+        WHERE h.id_movil = %s
+        ORDER BY h.fecha_cambio DESC
+    """, (id,))
+    cambios = cursor.fetchall()
+    
     db.close()
-    return render_template('historial_movil.html', movil=movil, historial=historial)
+    return render_template('historial_movil.html', 
+                           movil=movil, 
+                           historial=historial, 
+                           cambios=cambios)
 
 @app.route("/moviles/ficha/<int:id>")
 @login_requerido
-@requerir_permiso('es_encargado_moviles')
 def ficha_integral_movil(id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
-    # 1. DATOS PATRIMONIALES
-    cursor.execute("SELECT * FROM moviles WHERE id = %s", (id,))
+    # 1. DATOS INTEGRADOS (Móvil + Unidad Física + Proveedor)
+    query_movil = """
+        SELECT 
+            m.*, 
+            u.marca, u.modelo, u.anio_fabricacion, u.dominio, 
+            u.nro_chasis, u.nro_motor, u.lugar_origen, 
+            u.proveedor_nombre, u.precio_compra, u.moneda_compra,
+            u.capacidad_valor, u.fecha_adquisicion, u.km_actual
+        FROM moviles m
+        LEFT JOIN unidades_fisicas u ON m.id_unidad_actual = u.id_unidad
+        WHERE m.id_movil = %s
+    """
+    cursor.execute(query_movil, (id,))
     movil = cursor.fetchone()
     
     if not movil:
         db.close()
-        return "Móvil no encontrado", 404
+        flash("Móvil no encontrado", "danger")
+        return redirect(url_for('gestion_moviles'))
 
-    # Obtenemos el número de unidad (ej: 43/5) para buscarlo en nexo_personal
-    nro_unidad_texto = movil['nro_unidad']
-
-    # 2. FICHA TÉCNICA (Mantenimiento)
+    # 2. HISTORIAL DE MANTENIMIENTO
     cursor.execute("""
         SELECT * FROM historial_mantenimiento 
         WHERE id_movil = %s 
         ORDER BY fecha_reparacion DESC
-    """, (id,))
+    """, (id,)) 
     mantenimiento = cursor.fetchall()
     
-    # 3. REGISTRO OPERATIVO (Siniestros/Salidas)
-    # Usamos nexo_siniestros y nexo_personal que son tus tablas reales
+    # 3. REGISTRO OPERATIVO (Salidas de siniestros)
     cursor.execute("""
         SELECT DISTINCT s.nro_part_ruba, s.fecha, s.tipo_siniestro, s.lugar
         FROM nexo_personal np
         JOIN nexo_siniestros s ON np.siniestro_id = s.id
         WHERE np.movil = %s
         ORDER BY s.fecha DESC
-    """, (nro_unidad_texto,))
+    """, (movil['nro_movil'],))
     salidas = cursor.fetchall()
+
+    # Solo calculamos la cantidad de filas
+    total_intervenciones = len(salidas)
+
+    # 4. CRONOLOGÍA DE CAMBIOS DE UNIDAD (Para la tabla de numeración)
+    # Traemos marca y modelo de la unidad que salió para mostrar en la fila
+    cursor.execute("""
+        SELECT h.fecha_cambio, u_vieja.marca as marca_anterior, u_vieja.modelo as modelo_anterior
+        FROM historial_cambios_unidad h
+        JOIN unidades_fisicas u_vieja ON h.id_unidad_saliente = u_vieja.id_unidad
+        WHERE h.id_movil = %s
+        ORDER BY h.fecha_cambio DESC
+    """, (id,))
+    cambios = cursor.fetchall()
     
     db.close()
+    
+    # IMPORTANTE: Agregamos 'cambios=cambios' al render_template
     return render_template('ficha_integral_movil.html', 
-                           movil=movil, 
-                           mantenimiento=mantenimiento, 
-                           salidas=salidas)
+                       movil=movil, 
+                       mantenimiento=mantenimiento, 
+                       salidas=salidas,
+                       cambios=cambios,
+                       total_intervenciones=total_intervenciones)
+
+from datetime import datetime
 
 @app.route("/moviles/mantenimiento/nuevo/<int:id>")
 @login_requerido
@@ -3192,19 +3318,26 @@ def nuevo_mantenimiento_especifico(id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
-    # Buscamos el móvil para pasar sus datos al formulario
-    cursor.execute("SELECT id, nro_unidad, marca, modelo FROM moviles WHERE id = %s", (id,))
+    # Buscamos el móvil con los nombres reales de tus tablas
+    cursor.execute("""
+        SELECT m.id_movil, m.nro_movil, u.marca, u.modelo, u.km_actual
+        FROM moviles m
+        LEFT JOIN unidades_fisicas u ON m.id_unidad_actual = u.id_unidad
+        WHERE m.id_movil = %s
+    """, (id,))
     movil = cursor.fetchone()
-    
     db.close()
     
     if not movil:
         flash("Móvil no encontrado", "danger")
         return redirect(url_for('gestion_moviles'))
         
-    # Aquí lo mandamos al mismo template que ya usas para registrar mantenimientos
-    # Pero le pasamos el objeto 'movil_preseleccionado'
-    return render_template('registrar_mantenimiento.html', movil_preseleccionado=movil)
+    # Fecha de hoy lista para el input type="date"
+    fecha_hoy = datetime.now().strftime('%Y-%m-%d')
+    
+    return render_template('registrar_mantenimiento.html', 
+                           movil_preseleccionado=movil, 
+                           fecha_actual=fecha_hoy)
 
 import csv
 from flask import Response
@@ -3382,7 +3515,27 @@ def reporte_pdf():
 
     except Exception as e:
         return f"Error en el sistema: {str(e)}"
-          
+    
+@app.route("/novedades")
+@login_requerido
+def novedades():
+    return "<h3>Módulo de Novedades Dinámicas - Próximamente</h3><p>Aquí se podrá subir información general del cuartel.</p>"    
+
+@app.route("/mantenimiento/vehiculos")
+@login_requerido
+def gestion_vehiculos():
+    return "<h3>Módulo Gestión de Vehículos</h3><p>Próximamente</p>"
+
+@app.route("/mantenimiento/herramientas")
+@login_requerido
+def gestion_herramientas():
+    return "<h3>Módulo Gestión de Herramientas</h3><p>Próximamente</p>"
+
+@app.route("/eventos_calendario")
+@login_requerido
+def eventos_calendario():
+    return "<h3>Módulo de Novedades Dinámicas - Próximamente</h3><p>Aquí se podrá subir información general del cuartel.</p>"  
+
 # ============================================================
 # MAIN
 # ============================================================

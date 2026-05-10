@@ -7,20 +7,20 @@
             <div class="card shadow border-0">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                     <h4 class="mb-0"><i class="fas fa-tools me-2"></i>Registrar Mantenimiento</h4>
-                    <span class="badge bg-primary">Unidad #{{ movil_preseleccionado.nro_unidad }}</span>
+                    <span class="badge bg-primary">Unidad #{{ movil_preseleccionado['nro_movil'] }}</span>
                 </div>
                 <div class="card-body bg-light">
                     <!-- El action apunta a TU función: registrar_mantenimiento -->
-                    <form action="{{ url_for('registrar_mantenimiento', id_movil=movil_preseleccionado.id) }}" method="POST">
+                    <form action="{{ url_for('registrar_mantenimiento', id_movil=movil_preseleccionado['id_movil']) }}" method="POST">
                         
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label font-weight-bold">Fecha</label>
-                                <input type="date" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha del Servicio</label>
+                                <input type="date" name="fecha" class="form-control" value="{{ fecha_actual }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label font-weight-bold">Kilometraje Actual</label>
-                                <input type="number" name="km" class="form-control" placeholder="Ej: 15400" required>
+                                <input type="number" name="km" class="form-control" value="{{ movil_preseleccionado['km_actual'] }}" required>
                             </div>
                         </div>
 
@@ -63,7 +63,7 @@
 
                         <hr>
                         <div class="d-flex justify-content-end">
-                            <a href="{{ url_for('ficha_integral_movil', id=movil_preseleccionado.id) }}" class="btn btn-outline-secondary me-2">Cancelar</a>
+                            <a href="{{ url_for('ficha_integral_movil', id=movil_preseleccionado['id_movil']) }}" class="btn btn-outline-secondary me-2">Cancelar</a>
                             <button type="submit" class="btn btn-primary px-4">
                                 <i class="fas fa-save me-1"></i> Guardar en Historial
                             </button>
